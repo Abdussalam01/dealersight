@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from backend import ingest
+from backend import ingest, metrics
 from backend.ring_poller import RingPoller
 from tests.conftest import RING_DEVICE, history_event
 
@@ -36,7 +36,7 @@ def test_repeated_polls_ingest_each_event_once(conn):
 
     assert [r["status"] for r in first] == ["accepted", "accepted"]
     assert second == []
-    assert ingest.visit_count(conn) == 2
+    assert metrics.visit_count(conn) == 2
 
 
 def test_later_polls_stop_at_first_known_event(conn):

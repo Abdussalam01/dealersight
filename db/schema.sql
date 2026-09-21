@@ -74,3 +74,28 @@ INSERT INTO camera_position (code, name, zone_id) VALUES
     ('lot_departure', 'Lot: Departure lane', (SELECT id FROM zone WHERE code = 'lot')),
     ('lot_return', 'Lot: Return lane', (SELECT id FROM zone WHERE code = 'lot'))
 ON CONFLICT (code) DO NOTHING;
+
+-- Phase 2: events inferred by DealerSight's rules. Rebuilt from raw_event on every correlation run.
+CREATE TABLE IF NOT EXISTS derived_event (
+    id               BIGSERIAL PRIMARY KEY,
+    type             TEXT NOT NULL CHECK (type IN ('visit', 'engagement', 'probable_test_drive')),
+    zone_id          INT NOT NULL REFERENCES zone(id),
+    started_at       TIMESTAMPTZ NOT NULL,
+    ended_at         TIMESTAMPTZ,
+    confidence       TEXT NOT NULL,
+    rule_version     TEXT NOT NULL,
+    source_event_ids BIGINT[] NOT NULL,
+    source           TEXT NOT NULL
+);
+
+-- Lot departures waiting for a return. anon_token is short-lived and cleared on match or expiry.
+CREATE TABLE IF NOT EXISTS test_drive_candidate (
+    id                BIGSERIAL PRIMARY KEY,
+    anon_token        TEXT,
+    departed_event_id BIGINT NOT NULL REFERENCES raw_event(id),
+    departed_at       TIMESTAMPTZ NOT NULL,
+    expires_at        TIMESTAMPTZ NOT NULL,
+    status            TEXT NOT NULL CHECK (status IN ('open', 'matched', 'expired')),
+    matched_event_id  BIGINT REFERENCES raw_event(id),
+    rule_version      TEXT NOT NULL
+);

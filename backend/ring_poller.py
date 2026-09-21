@@ -7,7 +7,7 @@ as soon as they reach an event that is already stored.
 import logging
 import threading
 
-from backend import config, db, ingest
+from backend import config, correlation, db, ingest
 from backend.ring_client import RingAuthError, RingClient
 
 log = logging.getLogger("dealersight.poller")
@@ -30,6 +30,7 @@ class RingPoller:
             name = device.get("attributes", {}).get("name", "Ring device")
             ingest.ensure_device(conn, device["id"], name)
             results += self._poll_device(conn, device["id"], watermark)
+        correlation.rebuild(conn)  # every poll, so departures also expire on time
         self.status.update(ok=True, error=None, last_poll_at=ingest.utcnow().isoformat(), devices=len(devices))
         return results
 
@@ -57,6 +58,7 @@ class RingPoller:
                         log.info("ring event %s", result)
                 except RingAuthError as exc:
                     self.status.update(ok=False, error=str(exc))
+                    correlation.rebuild(conn)  # keep expiring departures while the token is refreshed
                 except Exception as exc:  # keep polling through transient failures
                     log.exception("poll failed")
                     self.status.update(ok=False, error=f"{type(exc).__name__}: {exc}")

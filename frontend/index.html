@@ -20,18 +20,35 @@
   .ok { background: #dcfce7; color: #14532d; }
   .no { background: #f3f4f6; color: #374151; }
   .err { color: #b91c1c; }
+  .inf { background: #fef3c7; color: #78350f; }
+  .replay { background: #ede9fe; color: #4c1d95; }
+  .bar { display: inline-block; height: 12px; background: #1d4ed8; vertical-align: middle; }
 </style>
 </head>
 <body>
 <h1>DealerSight</h1>
-<div class="muted">Phase 1: Ring event → stored event → visible metric</div>
+<div class="muted">Ring events → stored events → derived dealership activity</div>
 <div id="ring-status" class="muted"></div>
 
 <div class="row">
   <div class="card">
-    <div class="muted">Visits (inferred from Ring events)</div>
+    <div class="muted">Visits <span class="badge inf">Inferred</span></div>
     <div class="big" id="visits">–</div>
-    <button onclick="newSession()">Start new demo session (count from 0)</button>
+  </div>
+  <div class="card">
+    <div class="muted">Vehicle-area engagement signals <span class="badge inf">Inferred</span></div>
+    <div class="big" id="engagements">–</div>
+  </div>
+  <div class="card">
+    <div class="muted">Probable test-drive sessions <span class="badge inf">Inferred</span></div>
+    <div class="big" id="sessions">–</div>
+    <div class="muted" id="open-departures"></div>
+  </div>
+  <div class="card">
+    <div class="muted">Test-drive timing</div>
+    <div id="timing" style="margin:6px 0"></div>
+    <button onclick="setTiming('demo')">Demo</button><button onclick="setTiming('production')">Production</button>
+    <div style="margin-top:8px"><button onclick="newSession()">Start new demo session (count from 0)</button></div>
   </div>
   <div class="card" style="flex:1; min-width: 320px">
     <strong>Demo camera assignment</strong>
@@ -39,6 +56,18 @@
     <div id="positions"></div>
     <button onclick="disarm()">Disarm</button>
     <div id="armed" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="card" style="flex:2; min-width: 360px">
+    <strong>Probable test-drive sessions</strong>
+    <div class="muted">Departure-lane event matched to the next Return-lane event inside the timing window (oldest departure first). Time and sequence only; the same vehicle can't be confirmed anonymously.</div>
+    <table><thead><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Ring evidence</th><th>Rule</th></tr></thead><tbody id="session-list"></tbody></table>
+  </div>
+  <div class="card" style="flex:1; min-width: 240px">
+    <strong>Hourly visits</strong>
+    <div id="hourly"></div>
   </div>
 </div>
 
@@ -64,14 +93,30 @@ async function loadPositions() {
 async function arm(code) { await post("/api/demo/arm", { position: code }).catch(alert); refresh(); }
 async function disarm() { await post("/api/demo/disarm").catch(alert); refresh(); }
 async function newSession() { await post("/api/demo/new-session"); refresh(); }
+async function setTiming(profile) { await post("/api/demo/timing", { profile }).catch(alert); refresh(); }
+const secs = s => s >= 60 ? `${s / 60} min` : `${s} s`;
+const sourceBadge = src => src === "ring_live" ? '<span class="badge ring">Ring</span>' : src === "ring_replay" ? '<span class="badge replay">Ring replay</span>' : `<span class="badge no">${esc(src)}</span>`;
 
 async function refresh() {
-  const [status, visits, events] = await Promise.all([api("/api/status"), api("/api/metrics/visits"), api("/api/events/recent")]);
+  const [status, summary, events, sessions, hourly] = await Promise.all([api("/api/status"), api("/api/metrics/summary"),
+    api("/api/events/recent"), api("/api/evidence/probable_test_drive"), api("/api/metrics/hourly")]);
   const ring = status.ring;
   document.getElementById("ring-status").innerHTML = ring.ok === false
     ? `<span class="err">Ring: ${esc(ring.error)}</span>`
     : `Ring: ${ring.ok ? "connected" : "connecting…"} · device: ${esc(status.device || "–")} · last poll ${time(ring.last_poll_at)} · counting since ${time(status.watermark)}`;
-  document.getElementById("visits").textContent = visits.visits;
+  document.getElementById("visits").textContent = summary.visit;
+  document.getElementById("engagements").textContent = summary.engagement;
+  document.getElementById("sessions").textContent = summary.probable_test_drive;
+  document.getElementById("open-departures").textContent = `${summary.open_departures} departure(s) waiting for a return`;
+  const [minGap, maxGap] = summary.test_drive_window_seconds;
+  document.getElementById("timing").innerHTML = `<strong>${summary.timing_profile === "demo" ? "Demo timing" : "Production timing"}</strong>: return ${secs(minGap)}–${secs(maxGap)} after departure<br><span class="muted">rules ${esc(summary.rule_version)}</span>`;
+  document.getElementById("session-list").innerHTML = sessions.map(s => `<tr>
+    <td>${time(s.started_at)}</td><td>${time(s.ended_at)}</td><td>${s.duration_minutes} min</td>
+    <td>${s.ring_events.map(e => `${sourceBadge(s.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td>
+    <td class="muted">${esc(s.confidence)} · ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>';
+  const peak = Math.max(1, ...hourly.map(h => h.visits));
+  document.getElementById("hourly").innerHTML = hourly.map(h =>
+    `<div>${new Date(h.hour).toLocaleTimeString([], { hour: "numeric" })} <span class="bar" style="width:${120 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>';
 
   armedCode = status.armed ? status.armed.position : null;
   document.querySelectorAll("#positions button").forEach(b => b.classList.toggle("active", b.dataset.code === armedCode));
@@ -82,7 +127,7 @@ async function refresh() {
   document.getElementById("events").innerHTML = events.map(e => `<tr>
     <td>${time(e.started_at)}</td>
     <td>${esc(e.device_name)}</td>
-    <td><span class="badge ring">Ring</span> ${esc(e.ring_event_type)}</td>
+    <td>${sourceBadge(e.source)} ${esc(e.ring_event_type)}</td>
     <td>${esc(e.position_name || "–")}${e.zone_source === "demo_assignment" ? ' <span class="muted">(demo assignment)</span>' : ""}</td>
     <td>${e.accepted ? '<span class="badge ok">Counted</span>' : `<span class="badge no">Not counted: ${esc(e.reject_reason)}</span>`}</td>
     <td class="muted">…${esc(e.event_ref)}</td></tr>`).join("");

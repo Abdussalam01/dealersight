@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from backend import ingest
+from backend import correlation, ingest, metrics
 from tests.conftest import T0, history_event
 
 
@@ -8,16 +8,21 @@ def minutes(n):
     return timedelta(minutes=n)
 
 
+def visits(conn):
+    correlation.rebuild(conn, now=T0 + minutes(30))
+    return metrics.visit_count(conn)
+
+
 # --- Phase 1 checkpoint tests ---------------------------------------------
 
 def test_armed_entrance_event_counts_once(conn, device_id):
     ingest.arm(conn, device_id, "entrance", now=T0)
-    assert ingest.visit_count(conn) == 0
+    assert visits(conn) == 0
 
     result = ingest.ingest(conn, history_event("evt-1", T0 + minutes(1)), now=T0 + minutes(2))
 
     assert result == {"status": "accepted", "position": "entrance"}
-    assert ingest.visit_count(conn) == 1
+    assert visits(conn) == 1
 
 
 def test_duplicate_event_does_not_change_count(conn, device_id):
@@ -26,7 +31,7 @@ def test_duplicate_event_does_not_change_count(conn, device_id):
     ingest.ingest(conn, event, now=T0 + minutes(2))
 
     assert ingest.ingest(conn, event, now=T0 + minutes(3)) == {"status": "duplicate"}
-    assert ingest.visit_count(conn) == 1
+    assert visits(conn) == 1
     assert conn.execute("SELECT count(*) AS n FROM raw_event").fetchone()["n"] == 1
 
 
@@ -36,7 +41,7 @@ def test_unarmed_event_is_stored_but_not_counted(conn, device_id):
     assert result == {"status": "rejected", "reason": "not_armed"}
     stored = conn.execute("SELECT accepted, reject_reason FROM raw_event").fetchone()
     assert stored == {"accepted": False, "reject_reason": "not_armed"}
-    assert ingest.visit_count(conn) == 0
+    assert visits(conn) == 0
 
 
 def test_event_after_arm_expires_is_not_counted(conn, device_id):
@@ -45,7 +50,7 @@ def test_event_after_arm_expires_is_not_counted(conn, device_id):
     result = ingest.ingest(conn, history_event("evt-1", T0 + minutes(11)), now=T0 + minutes(12))
 
     assert result == {"status": "rejected", "reason": "not_armed"}
-    assert ingest.visit_count(conn) == 0
+    assert visits(conn) == 0
 
 
 # --- Supporting rules -------------------------------------------------------

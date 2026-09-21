@@ -1,0 +1,26 @@
+# DealerSight correlation rules. Every threshold here is documented in the README.
+# Changing a value? Bump rule_version so stored results show which rules produced them.
+rule_version: "2026-09-21.1"
+
+visit:
+  # Zone 1 Entrance: repeat activity on the same camera within this many seconds
+  # of a counted visit is treated as the same visit.
+  dedup_cooldown_seconds: 30
+
+engagement:
+  # Zone 2 Vehicle Display Area: activity lasting at least this long is one
+  # vehicle-area engagement signal (not proof of purchase intent).
+  # Ring Playground events observed at ~18-40 s.
+  min_duration_seconds: 20
+
+test_drive:
+  # Zone 3 Lot Entrance & Exit: a Return-lane event this long after a Departure-lane
+  # event closes the oldest open departure (FIFO) as a probable test-drive session.
+  # Departures with no return inside the window expire.
+  profiles:
+    production:
+      min_seconds: 300    # 5 minutes
+      max_seconds: 5400   # 90 minutes
+    demo:
+      min_seconds: 30     # compressed so the demo video can show a full session
+      max_seconds: 300

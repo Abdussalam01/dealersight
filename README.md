@@ -2,7 +2,7 @@
 
 DealerSight turns anonymous Ring camera events into a physical dealership funnel (visits, vehicle-area engagements, probable test-drive sessions) and connects it to clearly labeled simulated sales and financing data.
 
-> Status: early development (Phase 1). Full documentation comes later; this is the quick start.
+> Status: early development (Phase 2). Full documentation comes later; this is the quick start.
 
 ## Quick start (local)
 
@@ -28,6 +28,30 @@ The Ring Developer Playground exposes one synthetic camera, so demo mode lets th
 3. Within about a minute the event appears as **Counted** and visits increase by one.
 
 Events that arrive while nothing is armed are stored as evidence but never counted.
+
+## Zones and rules
+
+Three zones, four camera positions. Every threshold lives in `config/rules.yaml`, and each derived event stores the `rule_version` that produced it.
+
+| Zone | Camera position | Rule | Result |
+|---|---|---|---|
+| 1 Entrance | Entrance | Repeat activity on the same camera within **30 s** of a counted visit is the same visit | Anonymous visit |
+| 2 Vehicle Display Area | Display Area | Activity lasting at least **20 s** (Ring `end - start`) | Vehicle-area engagement *signal* (not proof of purchase intent) |
+| 3 Lot Entrance & Exit | Departure lane, Return lane | A Return-lane event inside the timing window closes the **oldest** open departure (FIFO); departures with no return expire at the end of the window | *Probable* test-drive session |
+
+Timing windows for Zone 3: **production** 5–90 minutes, **demo** 30 seconds–5 minutes (compressed so a demo can show a full session; the UI shows which is active).
+
+A departure and a return can't be tied to the same vehicle anonymously, so a match is a probable session inferred from time and sequence only. While a departure is open it holds a short-lived random token; the token is cleared when the departure is matched or expires.
+
+Derived events are recomputed from stored Ring events in order of Ring start time, so late arrivals, duplicate deliveries, and replays can't change the result.
+
+## Replay (rehearsal only)
+
+```powershell
+python scripts/replay.py scenario_a
+```
+
+Replays a fixed scenario (10 visits, 3 engagements, 3 probable sessions, 1 expired departure) through the normal ingest path on a separate "Replay camera (not live)" device. Replayed events are labeled **Ring replay** and are never shown as live. Running it starts a new counting session.
 
 ## Tests
 

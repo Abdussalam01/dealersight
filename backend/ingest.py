@@ -153,16 +153,6 @@ def is_known_event(conn, ring_event_id):
     return conn.execute("SELECT 1 FROM raw_event WHERE ring_event_id = %s", (ring_event_id,)).fetchone() is not None
 
 
-def visit_count(conn):
-    """Accepted Entrance events since the current watermark (dedup cooldown arrives in Phase 2)."""
-    session = current_session(conn)
-    return conn.execute(
-        """SELECT count(*) AS n FROM raw_event e JOIN camera_position p ON p.id = e.camera_position_id
-           WHERE e.accepted AND p.code = 'entrance' AND e.started_at >= %s""",
-        (session["watermark"],),
-    ).fetchone()["n"]
-
-
 def recent_events(conn, limit=20):
     return conn.execute(
         """SELECT right(e.ring_event_id, 8) AS event_ref, e.ring_event_type, e.started_at, e.ended_at,
