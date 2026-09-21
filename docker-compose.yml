@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16
+    container_name: dealersight-db
+    environment:
+      # Local development credentials only (not secrets); change for any shared deployment.
+      POSTGRES_USER: dealersight
+      POSTGRES_PASSWORD: dealersight
+      POSTGRES_DB: dealersight
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dealersight"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:

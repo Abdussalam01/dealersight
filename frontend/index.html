@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DealerSight</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; color: #1a1a1a; background: #fafafa; }
+  h1 { margin: 0 0 4px; }
+  .muted { color: #555; font-size: 14px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
+  .big { font-size: 48px; font-weight: 700; }
+  button { font-size: 15px; padding: 8px 12px; margin: 4px 4px 0 0; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
+  button.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  .ring { background: #dbeafe; color: #1e3a8a; }
+  .ok { background: #dcfce7; color: #14532d; }
+  .no { background: #f3f4f6; color: #374151; }
+  .err { color: #b91c1c; }
+</style>
+</head>
+<body>
+<h1>DealerSight</h1>
+<div class="muted">Phase 1: Ring event → stored event → visible metric</div>
+<div id="ring-status" class="muted"></div>
+
+<div class="row">
+  <div class="card">
+    <div class="muted">Visits (inferred from Ring events)</div>
+    <div class="big" id="visits">–</div>
+    <button onclick="newSession()">Start new demo session (count from 0)</button>
+  </div>
+  <div class="card" style="flex:1; min-width: 320px">
+    <strong>Demo camera assignment</strong>
+    <div class="muted">The Ring Playground has one synthetic camera. Arm it for a camera position, then trigger Motion in the Playground.</div>
+    <div id="positions"></div>
+    <button onclick="disarm()">Disarm</button>
+    <div id="armed" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<h3>Recent Ring events</h3>
+<table>
+  <thead><tr><th>Started</th><th>Device</th><th>Ring event</th><th>Camera position</th><th>Counted?</th><th>Ref</th></tr></thead>
+  <tbody id="events"></tbody>
+</table>
+
+<script>
+const api = (path, opts) => fetch(path, opts).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
+const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+const time = t => t ? new Date(t).toLocaleTimeString() : "";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+let armedCode = null;
+
+async function loadPositions() {
+  const positions = await api("/api/positions");
+  document.getElementById("positions").innerHTML = positions.map(p =>
+    `<button data-code="${p.code}" onclick="arm('${p.code}')" title="${esc(p.zone)}">${esc(p.name)}</button>`).join("");
+}
+
+async function arm(code) { await post("/api/demo/arm", { position: code }).catch(alert); refresh(); }
+async function disarm() { await post("/api/demo/disarm").catch(alert); refresh(); }
+async function newSession() { await post("/api/demo/new-session"); refresh(); }
+
+async function refresh() {
+  const [status, visits, events] = await Promise.all([api("/api/status"), api("/api/metrics/visits"), api("/api/events/recent")]);
+  const ring = status.ring;
+  document.getElementById("ring-status").innerHTML = ring.ok === false
+    ? `<span class="err">Ring: ${esc(ring.error)}</span>`
+    : `Ring: ${ring.ok ? "connected" : "connecting…"} · device: ${esc(status.device || "–")} · last poll ${time(ring.last_poll_at)} · counting since ${time(status.watermark)}`;
+  document.getElementById("visits").textContent = visits.visits;
+
+  armedCode = status.armed ? status.armed.position : null;
+  document.querySelectorAll("#positions button").forEach(b => b.classList.toggle("active", b.dataset.code === armedCode));
+  document.getElementById("armed").innerHTML = status.armed
+    ? `Armed: <strong>${esc(status.armed.name)}</strong> until ${time(status.armed.until)}`
+    : `<span class="muted">Not armed. New events are stored but not counted.</span>`;
+
+  document.getElementById("events").innerHTML = events.map(e => `<tr>
+    <td>${time(e.started_at)}</td>
+    <td>${esc(e.device_name)}</td>
+    <td><span class="badge ring">Ring</span> ${esc(e.ring_event_type)}</td>
+    <td>${esc(e.position_name || "–")}${e.zone_source === "demo_assignment" ? ' <span class="muted">(demo assignment)</span>' : ""}</td>
+    <td>${e.accepted ? '<span class="badge ok">Counted</span>' : `<span class="badge no">Not counted: ${esc(e.reject_reason)}</span>`}</td>
+    <td class="muted">…${esc(e.event_ref)}</td></tr>`).join("");
+}
+
+loadPositions();
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
