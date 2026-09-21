@@ -5,20 +5,30 @@ Governing rules: see the project instructions. If a feature conflicts with them,
 ## Data provenance
 | Category | What | Label in UI |
 |---|---|---|
-| Ring-originated | Live `motion_detected` events from Ring Developer Playground devices, read via the Ring Partner API | **Ring** |
-| Inferred by DealerSight | Visits (entrance), vehicle-area engagements (display), probable test drives (lot exit/return), dedup, matching | **Inferred** |
+| Ring-originated | Live events from the Ring Developer Playground device (`on_demand`, counted only while a demo position is armed), read via the Ring Partner API Event History; real `motion` / `motion_detected` events in production | **Ring** |
+| Inferred by DealerSight | Visits (entrance), vehicle-area engagements (display), probable test drives (lot departure/return lanes), dedup, matching | **Inferred** |
 | Simulated | Fictional dealers, sales, captive-finance deals, financing promotion, historical baseline events | **Simulated** |
 | AI-generated | Amazon Bedrock explanations of computed metric packets | **AI-generated** |
 
-## Device → zone mapping
-| Mode | How a Ring event gets its zone | `zone_source` |
+## Zones and camera positions
+Three zones (per the project rules), four camera positions:
+
+| Zone | Camera position(s) |
+|---|---|
+| 1 Entrance | Entrance |
+| 2 Vehicle Display Area | Display Area |
+| 3 Lot Entrance & Exit | Departure lane · Return lane |
+
+| Mode | How a Ring event gets its camera position | `zone_source` |
 |---|---|---|
-| Playground Demo Mode | The single Playground device is reassigned to Entrance / Display Area / Lot Exit / Lot Return via a labeled "Demo camera assignment" control; the zone is resolved from the assignment active at the event's start time | `demo_assignment` |
-| Production Mode | Each physical Ring device ID has one permanent installation zone | `device_configuration` |
+| Playground Demo Mode | The operator temporarily **arms** the single synthetic Playground device for one camera position before generating an event. The position is resolved from the arm active at the event's start time. | `demo_assignment` |
+| Production Mode | Each Ring device has one configured placement | `device_configuration` |
 
-> Because the Ring Playground exposes one synthetic camera, demo mode lets us reassign that camera to one of our dealership installation zones. A production deployment stores the same zone assignment permanently against each physical Ring device ID.
+> In production, the zone comes from the configured placement of each Ring device. In Playground Demo Mode, the operator temporarily assigns the single synthetic device to a camera position before generating an event. The Playground itself does not report a location.
 
-Ring's event ID, timestamps, and duration always come from Ring. Only the zone is configuration. Details: `ring-findings.md`.
+**`on_demand` rule:** the Ring docs define `on_demand` as a live-view session. In Demo Mode it is accepted only while a position is armed; in Production Mode it is excluded from physical funnel metrics unless future evidence validates it.
+
+Ring's event ID, timestamps, and duration always come from Ring. Only the camera position is configuration. Details: `ring-findings.md`.
 
 ## Required analyst questions
 1. Why did this dealer's conversion rate decline during the selected period?

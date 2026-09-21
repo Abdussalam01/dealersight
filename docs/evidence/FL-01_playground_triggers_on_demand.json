@@ -1,0 +1,79 @@
+{
+  "_note": "FL-01 evidence. Sanitized: device ID and token omitted; event IDs truncated to last 8 chars.",
+  "steps": "Ring Developer Playground: triggered Motion, Vehicle, Package (3 rounds, 2026-09-21), then called the endpoint below.",
+  "request": "GET https://api.amazonvision.com/v1/history/devices/{device_id}/events  (Authorization: Bearer <playground token>)",
+  "captured_file_utc": "20260921T194607Z",
+  "response_summary": {
+    "http_status": 200,
+    "events_returned": 8,
+    "distinct_event_types": [
+      "on_demand"
+    ]
+  },
+  "events": [
+    {
+      "event_ref": "\u20265C57EMV3",
+      "event_type": "on_demand",
+      "start_ms": 1790019876946,
+      "end_ms": 1790019916656,
+      "duration_s": 39.7,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u2026GLVI6MUM",
+      "event_type": "on_demand",
+      "start_ms": 1790019821068,
+      "end_ms": 1790019852809,
+      "duration_s": 31.7,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u202622BV5FMH",
+      "event_type": "on_demand",
+      "start_ms": 1790019772958,
+      "end_ms": 1790019794718,
+      "duration_s": 21.8,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u2026Y3IWFIBP",
+      "event_type": "on_demand",
+      "start_ms": 1790018391551,
+      "end_ms": 1790018411897,
+      "duration_s": 20.3,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u2026USXOFL3Q",
+      "event_type": "on_demand",
+      "start_ms": 1790018348433,
+      "end_ms": 1790018368879,
+      "duration_s": 20.4,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u20267LDKBLTB",
+      "event_type": "on_demand",
+      "start_ms": 1790018304967,
+      "end_ms": 1790018323611,
+      "duration_s": 18.6,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u2026UQNKO2TC",
+      "event_type": "on_demand",
+      "start_ms": 1790017243679,
+      "end_ms": 1790017283394,
+      "duration_s": 39.7,
+      "cv_detections": []
+    },
+    {
+      "event_ref": "\u2026ZXTJDIEJ",
+      "event_type": "on_demand",
+      "start_ms": 1790017161986,
+      "end_ms": 1790017183682,
+      "duration_s": 21.7,
+      "cv_detections": []
+    }
+  ]
+}

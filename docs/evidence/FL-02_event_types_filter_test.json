@@ -1,0 +1,54 @@
+{
+  "_note": "FL-02 controlled test. GET /v1/history/devices/{device_id}/events with a Ring Developer Playground token. Token and device ID omitted.",
+  "tested_at_utc": "2026-09-21T20:18:48Z",
+  "results": [
+    {
+      "query": "(no filter)",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    },
+    {
+      "query": "event_types=motion.human,motion.vehicle",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    },
+    {
+      "query": "event_types=motion",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    },
+    {
+      "query": "event_types=ding",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    },
+    {
+      "query": "event_types=on_demand",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    },
+    {
+      "query": "event_types=not_a_real_type",
+      "http_status": 200,
+      "events_returned": 8,
+      "event_types_in_response": [
+        "on_demand"
+      ]
+    }
+  ]
+}

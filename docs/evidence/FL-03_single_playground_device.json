@@ -1,0 +1,15 @@
+{
+  "_note": "FL-03 evidence. Sanitized: IDs removed.",
+  "request": "GET https://api.amazonvision.com/v1/devices",
+  "response_summary": {
+    "http_status": 200,
+    "device_count": 1,
+    "devices": [
+      {
+        "name": "Playground Device",
+        "image_url": "https://app-content.ring.com/shared/images/devices/square_device_images/DoorbellPro/rvdp_3x.png",
+        "has_components": false
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "_note": "FL-07 evidence. Amazon Bedrock Converse API, temperature=0.",
+  "model_id": "amazon.nova-micro-v1:0",
+  "region": "us-east-1",
+  "user_prompt": "Say hello to DealerSight in one sentence.",
+  "tested_at_utc": "2026-09-21T20:14:15Z",
+  "runs": [
+    {
+      "variant": "baseline_no_system_prompt",
+      "system_prompt": null,
+      "output": "\"Discover DealerSight, the innovative platform revolutionizing vehicle dealership operations with cutting-edge technology and seamless solutions.\"",
+      "latency_ms": 915,
+      "usage": {
+        "inputTokens": 9,
+        "outputTokens": 22,
+        "totalTokens": 31
+      }
+    },
+    {
+      "variant": "with_tone_system_prompt",
+      "system_prompt": "You write plain, factual text. Do not use promotional or marketing language (for example: revolutionary, cutting-edge, innovative, seamless). One sentence, under 20 words.",
+      "output": "DealerSight provides vehicle inspection and valuation services.",
+      "latency_ms": 422,
+      "usage": {
+        "inputTokens": 46,
+        "outputTokens": 10,
+        "totalTokens": 56
+      }
+    }
+  ]
+}
