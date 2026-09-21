@@ -1,0 +1,29 @@
+{
+  "_note": "Trimmed Ring Developer Playground history event (captured 2026-09-21). IDs replaced. All Playground triggers (Motion/Vehicle/Package) appear as on_demand.",
+  "data": [
+    {
+      "type": "history-events",
+      "id": "ava1.ring.history.event.EXAMPLE",
+      "attributes": {
+        "is_third_party_reviewed": true,
+        "start": 1790019876946,
+        "event_type": "on_demand",
+        "end": 1790019916656
+      },
+      "relationships": {
+        "cv_detections": {
+          "data": []
+        },
+        "source": {
+          "data": {
+            "type": "devices",
+            "id": "ava1.ring.device.EXAMPLE"
+          }
+        }
+      },
+      "meta": {
+        "riid": null
+      }
+    }
+  ]
+}
