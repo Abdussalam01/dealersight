@@ -137,7 +137,7 @@ async function dealerView() {
   const data = await api(`/api/funnel${dealerId ? `?dealer_id=${dealerId}` : ""}`);
   dealerId = data.dealer.id;
   const dealers = await api("/api/dealers");
-  const hourly = await api("/api/metrics/hourly");
+  const hourly = await api(`/api/metrics/hourly?dealer_id=${dealerId || ""}`);
   let evidence = "";
   if (openStage) {
     const rows = EVIDENCE_KIND[openStage]
@@ -161,8 +161,9 @@ async function dealerView() {
       <h3>Change vs previous period</h3>
       <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
         `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>
-      <h3>Hourly visits (live session)</h3>
-      ${hourly.map(h => `<div class="muted">${new Date(h.hour).toLocaleTimeString([], { hour: "numeric" })} <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No live visits yet</span>'}
+      <h3>Visits by hour of day</h3>
+      <div class="muted">Current period, this dealership.</div>
+      ${hourly.map(h => `<div class="muted">${String(h.hour).padStart(2, "0")}:00 <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>'}
     </div>
   </div>`;
 }

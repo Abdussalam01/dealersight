@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from backend import correlation, db, funnel, seed
+from backend import correlation, db, funnel, metrics, seed
 from tests.conftest import TEST_URL
 
 SEED_DAY = date(2026, 9, 23)
@@ -117,6 +117,22 @@ def test_promotion_shows_higher_finance_penetration(seeded):
 
     assert comparison["during"]["rates"]["finance_penetration"] > comparison["before"]["rates"]["finance_penetration"]
     assert comparison["finance_penetration_change_pts"] > 0
+
+
+def test_no_dealership_shows_every_sale_financed(seeded, spans):
+    for row in funnel.network(seeded, *spans)["dealers"]:
+        for period in ("period_a", "period_b"):
+            penetration = row[period]["rates"]["finance_penetration"]
+            assert penetration is None or penetration <= 100 * seed.MAX_PENETRATION
+
+
+def test_hourly_traffic_is_scoped_to_one_dealership_and_period(seeded, spans):
+    dealer = funnel.dealers(seeded)[0]
+    rows = metrics.hourly_visits(seeded, dealer["id"], *spans[1])
+
+    assert len(rows) <= 24
+    assert all(0 <= row["hour"] <= 23 for row in rows)
+    assert sum(row["visits"] for row in rows) == funnel.funnel(seeded, dealer["id"], *spans[1])["counts"]["visits"]
 
 
 # --- pattern detection -----------------------------------------------------------

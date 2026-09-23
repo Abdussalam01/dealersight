@@ -40,6 +40,7 @@ DEALERS = [
      "note": "steady comparison dealership"},
 ]
 FINANCE_RATE = (0.55, 0.72)  # share of simulated sales financed: before vs during the promotion
+MAX_PENETRATION = 0.85       # never show every sale as financed: some customers pay cash
 
 
 def period_bounds(today):
@@ -78,11 +79,31 @@ def seed_all(conn, today=None, seed=SEED):
                     _day_sales(conn, dealer_id, date, counts["sales"],
                                FINANCE_RATE[index], promotion_id if index == 1 else None, rng)
 
+        _cap_penetration(conn, [start_a, start_b])
+
         # Live Ring events land on the demo dealership.
         conn.execute(
             """UPDATE device SET dealer_id = (SELECT id FROM dealer WHERE is_demo)
                WHERE mode = 'demo' AND ring_device_id NOT LIKE 'replay.%%'""")
     return {"dealers": len(DEALERS), "period_a": [start_a, end_a], "period_b": [start_b, end_b]}
+
+
+def _cap_penetration(conn, period_starts):
+    """Drop the newest finance deals where a dealership's penetration exceeds the cap."""
+    for start in period_starts:
+        end = start + timedelta(days=7)
+        for row in conn.execute(
+            """SELECT dealer_id, count(*) AS sales FROM sale WHERE occurred_at >= %s AND occurred_at < %s
+               GROUP BY dealer_id""", (start, end)).fetchall():
+            allowed = int(row["sales"] * MAX_PENETRATION)
+            conn.execute(
+                """DELETE FROM finance_deal WHERE id IN (
+                       SELECT id FROM finance_deal WHERE dealer_id = %s AND occurred_at >= %s AND occurred_at < %s
+                       ORDER BY id DESC LIMIT GREATEST(0, (
+                           SELECT count(*) FROM finance_deal WHERE dealer_id = %s AND occurred_at >= %s AND occurred_at < %s
+                       ) - %s))""",
+                (row["dealer_id"], start, end + timedelta(hours=3), row["dealer_id"], start, end + timedelta(hours=3), allowed),
+            )
 
 
 def _dealer(conn, spec):

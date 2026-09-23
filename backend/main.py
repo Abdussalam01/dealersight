@@ -132,8 +132,9 @@ def summary(conn=Depends(get_conn)):
 
 
 @app.get("/api/metrics/hourly")
-def hourly(conn=Depends(get_conn)):
-    return metrics.hourly_visits(conn)
+def hourly(dealer_id: int | None = None, conn=Depends(get_conn)):
+    _, period_b = funnel.periods()
+    return metrics.hourly_visits(conn, dealer_id, *period_b)
 
 
 @app.get("/api/dealers")
