@@ -1,6 +1,6 @@
 """Funnel, stakeholder views, and seeded data (Phase 3)."""
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -122,6 +122,19 @@ def test_promotion_comparison_uses_equal_durations(seeded):
     assert "does not prove" in comparison["note"]
 
 
+def test_promotion_periods_are_seven_days_and_do_not_overlap(seeded):
+    comparison = funnel.promotion_comparison(seeded)
+
+    assert comparison["equal_durations_days"] == 7
+    assert comparison["during"]["start"] - comparison["before"]["start"] == timedelta(days=7)
+    # Half-open ranges: an event exactly on the boundary belongs to the during period only.
+    total = seeded.execute(
+        "SELECT count(*) AS n FROM sale WHERE occurred_at >= %s AND occurred_at < %s",
+        (comparison["before"]["start"], comparison["during"]["end"]),
+    ).fetchone()["n"]
+    assert comparison["before"]["sales"] + comparison["during"]["sales"] == total
+
+
 def test_promotion_shows_higher_finance_penetration(seeded):
     comparison = funnel.promotion_comparison(seeded)
 
@@ -160,6 +173,37 @@ def test_patterns_are_detected_from_the_numbers(seeded, spans):
 def test_pattern_descriptions_state_what_changed_without_claiming_a_cause(seeded, spans):
     for pattern in funnel.patterns(seeded, *spans):
         assert not any(word in pattern["description"].lower() for word in ("because", "caused", "due to"))
+
+
+def test_a_finding_disappears_when_its_data_changes(seeded, spans):
+    """Proves the findings are computed: remove the sales dip and the flag goes away."""
+    def flagged():
+        return {p["pattern"] for p in funnel.patterns(seeded, *spans) if p["dealer"] == "Brookfield Auto Group"}
+
+    assert "sales_fell_while_test_drives_held" in flagged()
+
+    dealer = seeded.execute("SELECT id FROM dealer WHERE name = 'Brookfield Auto Group'").fetchone()["id"]
+    seeded.execute(  # make period B match period A by copying a week of sales forward
+        """INSERT INTO sale (dealer_id, occurred_at, model_group)
+           SELECT dealer_id, occurred_at + interval '7 days', model_group FROM sale
+           WHERE dealer_id = %s AND occurred_at >= %s AND occurred_at < %s""",
+        (dealer, spans[0][0], spans[0][1]),
+    )
+    try:
+        assert "sales_fell_while_test_drives_held" not in flagged()
+    finally:
+        seed.seed_all(seeded, today=SEED_DAY)
+        correlation.rebuild(seeded)
+
+
+def test_hourly_chart_uses_the_dealership_timezone(seeded, spans):
+    dealer = funnel.dealers(seeded)[0]
+    assert dealer["timezone"]
+
+    utc_hours = {r["hour"] for r in metrics.hourly_visits(seeded, dealer["id"], *spans[1], timezone="UTC")}
+    shifted = {r["hour"] for r in metrics.hourly_visits(seeded, dealer["id"], *spans[1], timezone="Asia/Tokyo")}
+
+    assert utc_hours and shifted != utc_hours  # the timezone argument actually applies
 
 
 # --- determinism ------------------------------------------------------------------

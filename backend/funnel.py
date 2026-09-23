@@ -92,7 +92,7 @@ def periods(now=None):
 
 
 def dealers(conn):
-    return conn.execute("SELECT id, code, name, region, is_demo FROM dealer ORDER BY name").fetchall()
+    return conn.execute("SELECT id, code, name, region, is_demo, timezone FROM dealer ORDER BY name").fetchall()
 
 
 def compare(conn, dealer_id, period_a, period_b):

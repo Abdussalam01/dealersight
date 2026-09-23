@@ -134,7 +134,8 @@ def summary(conn=Depends(get_conn)):
 @app.get("/api/metrics/hourly")
 def hourly(dealer_id: int | None = None, conn=Depends(get_conn)):
     _, period_b = funnel.periods()
-    return metrics.hourly_visits(conn, dealer_id, *period_b)
+    row = conn.execute("SELECT timezone FROM dealer WHERE id = %s", (dealer_id,)).fetchone() if dealer_id else None
+    return metrics.hourly_visits(conn, dealer_id, *period_b, timezone=row["timezone"] if row else "UTC")
 
 
 @app.get("/api/dealers")

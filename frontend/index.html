@@ -126,7 +126,7 @@ function evidenceTable(rows, kind) {
   if (kind === "finance_deals") return `<div class="muted">Simulated captive-finance records, each linked to a simulated sale.</div><table>
     <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Promotion</th></tr>
     ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${esc(r.promotion || "—")}</td></tr>`).join("")}</table>`;
-  return `<div class="muted">Most recent inferred events and the Ring events behind them.</div><table>
+  return `<div class="muted">Underlying event references, each labelled <span class="badge ring">Ring</span> (live Ring Playground API event) or <span class="badge sim">Simulated baseline</span> (seeded demo history in Ring event shape).</div><table>
     <tr><th>When</th><th>Rule</th><th>Ring evidence</th></tr>
     ${rows.map(r => `<tr><td>${day(r.started_at)} ${time(r.started_at)}${r.duration_minutes ? ` · ${r.duration_minutes} min` : ""}</td>
       <td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
@@ -171,8 +171,8 @@ async function dealerView() {
       <h3>Change vs previous period</h3>
       <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
         `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>
-      <h3>Visits by hour (UTC)</h3>
-      <div class="muted">Current period, this dealership. Seeded activity runs 09:00–19:00 UTC.</div>
+      <h3>Visits by hour (${esc(data.dealer.timezone)})</h3>
+      <div class="muted">Current period, in ${esc(data.dealer.name)}'s local timezone. Seeded activity runs 09:00–19:00.</div>
       ${hourly.map(h => `<div class="muted">${String(h.hour).padStart(2, "0")}:00 <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>'}
     </div>
   </div>`;
@@ -212,9 +212,11 @@ async function financeView() {
       <tr><th>Funnel stage</th><th class="num">Before</th><th class="num">During</th><th class="num">Change</th><th class="num">Per day before</th><th class="num">Per day during</th></tr>
       ${keys.map(k => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${f.before[k]}</td><td class="num">${f.during[k]}</td>
         <td class="num">${delta(f.change_pct[k])}</td><td class="num">${f.before.per_day[k]}</td><td class="num">${f.during.per_day[k]}</td></tr>`).join("")}
-      <tr><td><strong>Finance penetration</strong></td><td class="num">${pct(f.before.rates.finance_penetration)}</td>
-        <td class="num">${pct(f.during.rates.finance_penetration)}</td>
-        <td class="num" colspan="3">${f.finance_penetration_change_pts > 0 ? "+" : ""}${f.finance_penetration_change_pts} points during the promotion</td></tr>
+      <tr><td><strong>Finance penetration</strong></td>
+        <td class="num">${f.before.finance_deals} of ${f.before.sales}<br>${pct(f.before.rates.finance_penetration)}</td>
+        <td class="num">${f.during.finance_deals} of ${f.during.sales}<br>${pct(f.during.rates.finance_penetration)}</td>
+        <td class="num" colspan="3">${f.finance_penetration_change_pts > 0 ? "+" : ""}${f.finance_penetration_change_pts} percentage points during the promotion
+          <div class="muted">Percentage changes come from small numbers of simulated sales; the counts are shown so the size of the base is visible.</div></td></tr>
     </table>
     <div class="muted" style="margin-top:10px">${esc(f.note)} The finance view receives aggregate business metrics only: no footage and no individual customer information.</div>
   </div>`;
@@ -226,10 +228,10 @@ async function ringView() {
   <div class="card">
     <strong>Probable test-drive sessions</strong>
     <div class="muted">A Return-lane event matched to the oldest open Departure-lane event inside the timing window. Time and sequence only: the same vehicle cannot be confirmed anonymously.</div>
-    <table style="margin-top:8px"><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Ring evidence</th><th>Rule</th></tr>
+    <table style="margin-top:8px"><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Event references</th><th>Rule</th></tr>
     ${sessions.slice(0, 8).map(s => `<tr><td>${day(s.started_at)} ${time(s.started_at)}</td><td>${time(s.ended_at)}</td><td>${s.duration_minutes} min</td>
       <td>${s.ring_events.map(e => `${sourceBadge(s.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td>
-      <td class="muted">${esc(s.confidence)} · ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>'}</table>
+      <td class="muted">${esc(s.confidence)} · rules ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>'}</table>
     <h3>Recent Ring events (audit history)</h3>
     <table><tr><th>Started</th><th>Device</th><th>Ring event</th><th>Camera position</th><th>Counted?</th><th>Ref</th></tr>
     ${events.map(e => `<tr><td>${day(e.started_at)} ${time(e.started_at)}</td><td>${esc(e.device_name)}</td>

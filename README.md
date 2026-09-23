@@ -66,6 +66,10 @@ Rates: engagements ÷ visits · probable sessions ÷ engagements · sales ÷ pro
 
 **Patterns are detected, not written.** The metrics layer compares periods and flags situations such as "probable test drives held steady while sales fell 30%". It describes what changed and never claims a cause.
 
+**How the demo data was designed.** The deterministic dataset was designed to contain specific dealership scenarios for demonstrating the analytics. DealerSight's metrics and alert logic still calculate and detect those scenarios rather than displaying hard-coded conclusions. The fixed seed was selected so those scenarios are present in the generated data; no finding is written into the interface, and a finding disappears if its underlying data changes.
+
+**Event references.** Clicking a funnel stage shows the underlying event references, each labelled **Live Ring Playground** (an actual Ring API event) or **Simulated baseline** (seeded demo history in Ring event shape), together with the rule version that produced the result.
+
 **Start new demo session** reloads the same seeded baseline and starts a fresh live session. Earlier live Ring events stay in the audit history but stop counting.
 
 ## Replay (rehearsal only)

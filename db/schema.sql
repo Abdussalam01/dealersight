@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS dealer (
     is_demo BOOLEAN NOT NULL DEFAULT false   -- the one dealership that receives live Ring events
 );
 
+ALTER TABLE dealer ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
 ALTER TABLE device ADD COLUMN IF NOT EXISTS dealer_id INT REFERENCES dealer(id);
 ALTER TABLE derived_event ADD COLUMN IF NOT EXISTS dealer_id INT REFERENCES dealer(id);
 CREATE INDEX IF NOT EXISTS derived_event_dealer ON derived_event (dealer_id, type, started_at);

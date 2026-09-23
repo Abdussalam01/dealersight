@@ -30,6 +30,9 @@ Three zones (per the project rules), four camera positions:
 
 Ring's event ID, timestamps, and duration always come from Ring. Only the camera position is configuration. Details: `ring-findings.md`.
 
+## How the demo data was designed
+The deterministic dataset was designed to contain specific dealership scenarios for demonstrating the analytics. DealerSight's metrics and alert logic still calculate and detect those scenarios rather than displaying hard-coded conclusions. The fixed seed in `backend/seed.py` was selected so those scenarios are present. Seeded activity is stored in Ring event shape but is always labelled `simulated_baseline`; only Ring Developer Playground events are actual Ring API events.
+
 ## Required analyst questions
 1. Why did this dealer's conversion rate decline during the selected period?
 2. Which dealers had increased probable test-drive activity without a corresponding increase in sales?

@@ -7,9 +7,13 @@ cannot observe. The seeded history is stored as raw events labelled
 the same correlation rules as live Ring events instead of being written by hand.
 
 Counts are monotonic by construction: visits >= engagements >= probable
-test-drive sessions >= sales >= finance deals. The three demo situations
-(sales dip, test-drive growth without sales, promotion lift) are built into the
-data but are *detected* by the metrics layer, never hard-coded in the UI.
+test-drive sessions >= sales >= finance deals.
+
+The deterministic dataset was designed to contain specific dealership scenarios for demonstrating the analytics. DealerSight's metrics and alert logic still calculate and detect those scenarios rather than displaying hard-coded conclusions.
+
+The fixed seed below was selected so the intended scenarios (sales dip with
+steady test drives, test-drive growth without sales, promotion lift) are present
+in the generated data.
 """
 
 import random
@@ -17,9 +21,7 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
-# Fixed seed chosen so the three demo situations exist in the generated data;
-# the metrics layer still has to detect them (nothing about them is hard-coded).
-SEED = 8
+SEED = 8  # selected so the intended demo scenarios exist in the generated data
 MODEL_GROUPS = ["Compact SUV", "Midsize Sedan", "Pickup", "EV Hatchback"]
 PROMOTION = {"code": "fall_apr", "name": "Fall 0.9% APR Event (fictional)"}
 OPENS, CLOSES = 9, 19  # business hours used for seeded activity
