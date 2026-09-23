@@ -30,15 +30,16 @@ def visit_count(conn):
     return summary(conn)["visit"]
 
 
-def hourly_visits(conn, dealer_id=None, start=None, end=None, timezone="UTC"):
+def hourly_visits(conn, dealer_id=None, start=None, end=None, timezone="UTC", sources=None):
     """Visits by hour of day in the dealership's own timezone (opening-hours traffic profile)."""
     return conn.execute(
         """SELECT EXTRACT(hour FROM started_at AT TIME ZONE %s)::int AS hour, count(*) AS visits
            FROM derived_event
            WHERE type = 'visit' AND (%s::int IS NULL OR dealer_id = %s)
              AND (%s::timestamptz IS NULL OR started_at >= %s) AND (%s::timestamptz IS NULL OR started_at < %s)
+             AND (%s::text[] IS NULL OR source = ANY(%s))
            GROUP BY 1 ORDER BY 1""",
-        (timezone, dealer_id, dealer_id, start, start, end, end),
+        (timezone, dealer_id, dealer_id, start, start, end, end, sources, sources),
     ).fetchall()
 
 

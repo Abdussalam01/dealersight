@@ -132,10 +132,13 @@ def summary(conn=Depends(get_conn)):
 
 
 @app.get("/api/metrics/hourly")
-def hourly(dealer_id: int | None = None, conn=Depends(get_conn)):
+def hourly(dealer_id: int | None = None, scope: str = "all", conn=Depends(get_conn)):
     _, period_b = funnel.periods()
+    if scope == "live":
+        period_b = (ingest.current_session(conn)["watermark"], period_b[1])
     row = conn.execute("SELECT timezone FROM dealer WHERE id = %s", (dealer_id,)).fetchone() if dealer_id else None
-    return metrics.hourly_visits(conn, dealer_id, *period_b, timezone=row["timezone"] if row else "UTC")
+    return metrics.hourly_visits(conn, dealer_id, *period_b, timezone=row["timezone"] if row else "UTC",
+                                 sources=["ring_live"] if scope == "live" else None)
 
 
 @app.get("/api/dealers")
@@ -163,8 +166,10 @@ def dealer_funnel(dealer_id: int | None = None, scope: str = "all", conn=Depends
         "dealer": dealer,
         "funnel": funnel.funnel(conn, dealer["id"], *period_b, sources=["ring_live"] if scope == "live" else None),
         "scope": scope,
-        "comparison": funnel.compare(conn, dealer["id"], period_a, period_b),
-        "patterns": [p for p in funnel.patterns(conn, period_a, period_b) if p["dealer"] == dealer["name"]],
+        "comparison": None if scope == "live" else funnel.compare(conn, dealer["id"], period_a, period_b),
+        "patterns": [] if scope == "live" else
+                    [p for p in funnel.patterns(conn, period_a, period_b) if p["dealer"] == dealer["name"]],
+        "period": {"start": period_b[0], "end": period_b[1]},
         "note": "Anonymous operational funnel: stages compare aggregate activity and never follow an individual.",
     }
 

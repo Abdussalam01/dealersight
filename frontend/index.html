@@ -71,7 +71,7 @@ const post = (p, b) => fetch(p, { method: "POST", headers: { "Content-Type": "ap
   .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const time = t => t ? new Date(t).toLocaleTimeString() : "";
-const day = t => t ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+const day = t => t ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }) : "";
 const pct = v => v === null || v === undefined ? "—" : `${v}%`;
 const delta = v => v === null || v === undefined ? "—" :
   `<span class="${v > 0 ? "up" : v < 0 ? "down" : ""}">${v > 0 ? "+" : ""}${v}%</span>`;
@@ -139,7 +139,7 @@ async function dealerView() {
   const data = await api(`/api/funnel?scope=${scope}${dealerId ? `&dealer_id=${dealerId}` : ""}`);
   dealerId = data.dealer.id;
   const dealers = await api("/api/dealers");
-  const hourly = await api(`/api/metrics/hourly?dealer_id=${dealerId || ""}`);
+  const hourly = await api(`/api/metrics/hourly?scope=${scope}&dealer_id=${dealerId || ""}`);
   let evidence = "";
   if (openStage) {
     const rows = EVIDENCE_KIND[openStage]
@@ -148,6 +148,15 @@ async function dealerView() {
     evidence = evidenceTable(rows, openStage);
   }
   const c = data.comparison, peak = Math.max(1, ...hourly.map(h => h.visits));
+  const sidePanel = c ? `
+      <strong>Worth investigating</strong>
+      <div class="muted">Detected from the numbers; describes what changed, not why.</div>
+      ${data.patterns.length ? data.patterns.map(p => `<div style="margin-top:8px">• ${esc(p.description)}</div>`).join("") : '<div class="muted" style="margin-top:8px">No pattern flagged this period.</div>'}
+      <h3>Change vs previous period</h3>
+      <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
+        `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>`
+    : `<strong>Live demo session</strong>
+       <div class="muted">Ring events since this session started. A comparison with the previous period is not shown here: it would weigh a few live minutes against seven seeded days.</div>`;
   return `
   <div class="row">
     <div class="card grow">
@@ -165,14 +174,9 @@ async function dealerView() {
       <div class="muted" style="margin-top:8px">${esc(data.note)}</div>
     </div>
     <div class="card" style="min-width:280px">
-      <strong>Worth investigating</strong>
-      <div class="muted">Detected from the numbers; describes what changed, not why.</div>
-      ${data.patterns.length ? data.patterns.map(p => `<div style="margin-top:8px">• ${esc(p.description)}</div>`).join("") : '<div class="muted" style="margin-top:8px">No pattern flagged this period.</div>'}
-      <h3>Change vs previous period</h3>
-      <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
-        `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>
+      ${sidePanel}
       <h3>Visits by hour (${esc(data.dealer.timezone)})</h3>
-      <div class="muted">Current period, in ${esc(data.dealer.name)}'s local timezone. Seeded activity runs 09:00–19:00.</div>
+      <div class="muted">${scope === "live" ? "This demo session only" : "Current period"}, in ${esc(data.dealer.name)}'s local timezone. Seeded activity runs 09:00–19:00.</div>
       ${hourly.map(h => `<div class="muted">${String(h.hour).padStart(2, "0")}:00 <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>'}
     </div>
   </div>`;

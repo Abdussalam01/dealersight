@@ -43,6 +43,6 @@ The deterministic dataset was designed to contain specific dealership scenarios 
 |---|---|
 | 1 Ring feasibility | 2026-09-21: live Playground event armed at Entrance counted once (visits 0 → 1), unarmed event stored as `not_armed`; expiry, duplicate, and 9 more rules covered by 13 passing tests. Evidence: `docs/evidence/gate1_live_ring_event.png` |
 | 2 Event reliability | 2026-09-23: live Playground run produced a visit (Entrance), an engagement signal (Display Area, 40 s vs. 20 s threshold), and a probable test-drive session (departure 16:34:22 → return 16:36:06, 1.7 min); 27 tests cover duplicates, out-of-order events, missing returns, expired windows, overlapping departures, and repeated replay |
-| 3 Complete funnel | |
+| 3 Complete funnel | 2026-09-23: live Playground event counted once on the demo dealership (252 = 1 Live Ring Playground + 251 Simulated baseline; live-session view shows the event on its own with business rates unavailable). Views reconcile dealer→region→network, promotion periods are equal 7 days with no overlap, finance deals reference real simulated sales, and findings disappear when their data changes. 46 tests. |
 | 4 Meaningful AWS use | |
 | 5 Submission readiness | |
