@@ -143,9 +143,16 @@ def dealer_list(conn=Depends(get_conn)):
 
 
 @app.get("/api/funnel")
-def dealer_funnel(dealer_id: int | None = None, conn=Depends(get_conn)):
-    """Dealer view: the five-stage funnel for the current period, with each stage's sources."""
+def dealer_funnel(dealer_id: int | None = None, scope: str = "all", conn=Depends(get_conn)):
+    """Dealer view: the five-stage funnel for the current period, with each stage's sources.
+
+    scope=live shows only Ring events from the current demo session, so a live
+    Playground event is visible on its own instead of being lost in the seeded history.
+    """
     period_a, period_b = funnel.periods()
+    if scope == "live":
+        watermark = ingest.current_session(conn)["watermark"]
+        period_b = (watermark, period_b[1])
     dealer = conn.execute(
         "SELECT * FROM dealer WHERE id = %s", (dealer_id,)
     ).fetchone() if dealer_id else conn.execute("SELECT * FROM dealer WHERE is_demo").fetchone()
@@ -153,7 +160,8 @@ def dealer_funnel(dealer_id: int | None = None, conn=Depends(get_conn)):
         raise HTTPException(404, "no dealership found: seed the demo data first")
     return {
         "dealer": dealer,
-        "funnel": funnel.funnel(conn, dealer["id"], *period_b),
+        "funnel": funnel.funnel(conn, dealer["id"], *period_b, sources=["ring_live"] if scope == "live" else None),
+        "scope": scope,
         "comparison": funnel.compare(conn, dealer["id"], period_a, period_b),
         "patterns": [p for p in funnel.patterns(conn, period_a, period_b) if p["dealer"] == dealer["name"]],
         "note": "Anonymous operational funnel: stages compare aggregate activity and never follow an individual.",

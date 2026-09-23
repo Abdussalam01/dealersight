@@ -54,7 +54,8 @@
     <div>
       <strong>Test-drive timing</strong>
       <div id="timing" class="muted" style="margin:4px 0"></div>
-      <button onclick="setTiming('demo')">Demo</button><button onclick="setTiming('production')">Production</button>
+      <button onclick="setTiming('demo')">Demo window (30 s – 5 min)</button><button onclick="setTiming('production')">Production window (5 – 90 min)</button>
+      <div class="muted" style="max-width:260px">How long after a Departure-lane event a Return-lane event still counts as one probable test-drive session.</div>
       <div style="margin-top:6px"><button onclick="newSession()">Start new demo session</button></div>
       <div class="muted" style="max-width:260px">Reloads the same seeded baseline and starts a fresh live session. Earlier Ring events stay in the audit history.</div>
     </div>
@@ -80,7 +81,7 @@ const sourceBadge = src => src === "ring_live" ? '<span class="badge ring">Ring<
   : `<span class="badge sim">${esc(src === "simulated_baseline" ? "Simulated baseline" : src)}</span>`;
 
 const TABS = { dealer: "Dealer", manufacturer: "Manufacturer", finance: "Captive finance", ring: "Ring events" };
-let tab = "dealer", dealerId = null, openStage = null;
+let tab = "dealer", dealerId = null, openStage = null, scope = "all";
 
 document.getElementById("tabs").innerHTML = Object.entries(TABS)
   .map(([key, label]) => `<button data-tab="${key}" onclick="show('${key}')">${label}</button>`).join("");
@@ -91,6 +92,7 @@ async function disarm() { await post("/api/demo/disarm").catch(alert); refresh()
 async function setTiming(profile) { await post("/api/demo/timing", { profile }).catch(alert); refresh(); }
 async function newSession() { await post("/api/demo/new-session").catch(alert); refresh(); }
 function pickDealer(id) { dealerId = Number(id); openStage = null; refresh(); }
+function setScope(next) { scope = next; openStage = null; refresh(); }
 function toggleStage(key) { openStage = openStage === key ? null : key; refresh(); }
 
 async function loadPositions() {
@@ -134,7 +136,7 @@ function evidenceTable(rows, kind) {
 const EVIDENCE_KIND = { visits: "visit", engagements: "engagement", probable_test_drives: "probable_test_drive" };
 
 async function dealerView() {
-  const data = await api(`/api/funnel${dealerId ? `?dealer_id=${dealerId}` : ""}`);
+  const data = await api(`/api/funnel?scope=${scope}${dealerId ? `&dealer_id=${dealerId}` : ""}`);
   dealerId = data.dealer.id;
   const dealers = await api("/api/dealers");
   const hourly = await api(`/api/metrics/hourly?dealer_id=${dealerId || ""}`);
@@ -150,7 +152,15 @@ async function dealerView() {
   <div class="row">
     <div class="card grow">
       <div>${dealers.map(d => `<button onclick="pickDealer(${d.id})" class="${d.id === dealerId ? "active" : ""}">${esc(d.name)}${d.is_demo ? " ★" : ""}</button>`).join("")}</div>
-      <div class="muted" style="margin:6px 0">★ receives the live Ring Playground events. Period: ${day(c.period_b.start)} – now vs ${day(c.period_a.start)} – ${day(c.period_a.end)}. Click a stage for its evidence.</div>
+      <div style="margin:8px 0 4px">
+        <button onclick="setScope('all')" class="${scope === "all" ? "active" : ""}">Full period</button>
+        <button onclick="setScope('live')" class="${scope === "live" ? "active" : ""}">This demo session only</button>
+      </div>
+      <div class="muted" style="margin:0 0 6px">★ receives the live Ring Playground events.
+        ${scope === "live"
+          ? "Showing only Ring events from the current demo session, so a live event is visible on its own. Simulated business records are excluded."
+          : `Period: ${day(c.period_b.start)} – now vs ${day(c.period_a.start)} – ${day(c.period_a.end)}.`}
+        Click a stage for its evidence.</div>
       ${funnelBlock(data, evidence)}
       <div class="muted" style="margin-top:8px">${esc(data.note)}</div>
     </div>
@@ -161,8 +171,8 @@ async function dealerView() {
       <h3>Change vs previous period</h3>
       <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
         `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>
-      <h3>Visits by hour of day</h3>
-      <div class="muted">Current period, this dealership.</div>
+      <h3>Visits by hour (UTC)</h3>
+      <div class="muted">Current period, this dealership. Seeded activity runs 09:00–19:00 UTC.</div>
       ${hourly.map(h => `<div class="muted">${String(h.hour).padStart(2, "0")}:00 <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>'}
     </div>
   </div>`;

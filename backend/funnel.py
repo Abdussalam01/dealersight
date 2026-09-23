@@ -38,22 +38,27 @@ def change_pct(before, after):
     return None if not before else round(100 * (after - before) / before, 1)
 
 
-def funnel(conn, dealer_id=None, start=None, end=None):
+def funnel(conn, dealer_id=None, start=None, end=None, sources=None):
+    """`sources` limits the Ring-derived stages, e.g. ['ring_live'] for this demo session only."""
     counts = {key: 0 for key, _, _ in STAGES}
     provenance = {key: {} for key, _, _ in STAGES}
 
     for row in conn.execute(
         """SELECT type, source, count(*) AS n FROM derived_event
            WHERE (%s::int IS NULL OR dealer_id = %s) AND (%s::timestamptz IS NULL OR started_at >= %s)
-             AND (%s::timestamptz IS NULL OR started_at < %s)
+             AND (%s::timestamptz IS NULL OR started_at < %s) AND (%s::text[] IS NULL OR source = ANY(%s))
            GROUP BY type, source""",
-        (dealer_id, dealer_id, start, start, end, end),
+        (dealer_id, dealer_id, start, start, end, end, sources, sources),
     ).fetchall():
         key = DERIVED_KEY[row["type"]]
         counts[key] += row["n"]
         provenance[key][SOURCE_LABELS.get(row["source"], row["source"])] = row["n"]
 
+    business_included = sources is None or "simulated_baseline" in sources
     for key, table in (("sales", "sale"), ("finance_deals", "finance_deal")):
+        if not business_included:
+            provenance[key] = {}   # simulated business records are not part of a live-only view
+            continue
         counts[key] = conn.execute(
             f"""SELECT count(*) AS n FROM {table}
                 WHERE (%s::int IS NULL OR dealer_id = %s) AND (%s::timestamptz IS NULL OR occurred_at >= %s)
@@ -69,9 +74,11 @@ def funnel(conn, dealer_id=None, start=None, end=None):
         "rates": {
             "engagement_rate": rate(counts["engagements"], counts["visits"]),
             "probable_test_drive_rate": rate(counts["probable_test_drives"], counts["engagements"]),
-            "sales_conversion": rate(counts["sales"], counts["probable_test_drives"]),
-            "finance_penetration": rate(counts["finance_deals"], counts["sales"]),
+            # With business records out of scope these are not zero, they are unavailable.
+            "sales_conversion": rate(counts["sales"], counts["probable_test_drives"]) if business_included else None,
+            "finance_penetration": rate(counts["finance_deals"], counts["sales"]) if business_included else None,
         },
+        "business_records_included": business_included,
         "period": {"start": start, "end": end},
     }
 

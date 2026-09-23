@@ -62,6 +62,16 @@ def test_seeded_history_is_labelled_simulated_baseline(seeded):
     assert sources == {"simulated_baseline"}
 
 
+def test_live_scope_excludes_business_records_without_showing_zero_rates(seeded, spans):
+    result = funnel.funnel(seeded, None, *spans[1], sources=["ring_live"])
+
+    assert result["business_records_included"] is False
+    assert result["counts"]["sales"] == 0
+    assert result["rates"]["sales_conversion"] is None        # unavailable, not 0%
+    assert result["rates"]["finance_penetration"] is None
+    assert all(stage["provenance"] == {} for stage in result["stages"][3:])
+
+
 # --- simulated business records ------------------------------------------------
 
 def test_every_finance_deal_references_a_real_simulated_sale(seeded):
