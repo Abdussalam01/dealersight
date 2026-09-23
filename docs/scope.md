@@ -39,7 +39,7 @@ Ring's event ID, timestamps, and duration always come from Ring. Only the camera
 | Gate | Date |
 |---|---|
 | 1 Ring feasibility | 2026-09-21: live Playground event armed at Entrance counted once (visits 0 → 1), unarmed event stored as `not_armed`; expiry, duplicate, and 9 more rules covered by 13 passing tests. Evidence: `docs/evidence/gate1_live_ring_event.png` |
-| 2 Event reliability | |
+| 2 Event reliability | 2026-09-23: live Playground run produced a visit (Entrance), an engagement signal (Display Area, 40 s vs. 20 s threshold), and a probable test-drive session (departure 16:34:22 → return 16:36:06, 1.7 min); 27 tests cover duplicates, out-of-order events, missing returns, expired windows, overlapping departures, and repeated replay |
 | 3 Complete funnel | |
 | 4 Meaningful AWS use | |
 | 5 Submission readiness | |
