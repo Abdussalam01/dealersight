@@ -24,3 +24,10 @@ test_drive:
     demo:
       min_seconds: 30     # compressed so the demo video can show a full session
       max_seconds: 300
+
+patterns:
+  # Thresholds the metrics layer uses to flag a situation worth investigating.
+  # These describe what changed; they never claim a cause.
+  stable_pct: 5        # a change within +/- this is "held steady"
+  sales_drop_pct: 20   # sales down at least this much
+  growth_pct: 20       # probable test drives up at least this much

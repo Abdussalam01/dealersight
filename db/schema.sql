@@ -99,3 +99,45 @@ CREATE TABLE IF NOT EXISTS test_drive_candidate (
     matched_event_id  BIGINT REFERENCES raw_event(id),
     rule_version      TEXT NOT NULL
 );
+
+-- Phase 3: fictional dealerships and clearly labelled simulated business records.
+CREATE TABLE IF NOT EXISTS dealer (
+    id      SERIAL PRIMARY KEY,
+    code    TEXT UNIQUE NOT NULL,
+    name    TEXT NOT NULL,
+    region  TEXT NOT NULL,
+    is_demo BOOLEAN NOT NULL DEFAULT false   -- the one dealership that receives live Ring events
+);
+
+ALTER TABLE device ADD COLUMN IF NOT EXISTS dealer_id INT REFERENCES dealer(id);
+ALTER TABLE derived_event ADD COLUMN IF NOT EXISTS dealer_id INT REFERENCES dealer(id);
+CREATE INDEX IF NOT EXISTS derived_event_dealer ON derived_event (dealer_id, type, started_at);
+
+CREATE TABLE IF NOT EXISTS promotion (
+    id        SERIAL PRIMARY KEY,
+    code      TEXT UNIQUE NOT NULL,
+    name      TEXT NOT NULL,
+    starts_at TIMESTAMPTZ NOT NULL,
+    ends_at   TIMESTAMPTZ NOT NULL,
+    source    TEXT NOT NULL DEFAULT 'simulated'
+);
+
+-- Simulated business data. Never Ring-derived: Ring cannot observe a sale or a finance agreement.
+CREATE TABLE IF NOT EXISTS sale (
+    id          BIGSERIAL PRIMARY KEY,
+    dealer_id   INT NOT NULL REFERENCES dealer(id),
+    occurred_at TIMESTAMPTZ NOT NULL,
+    model_group TEXT NOT NULL,
+    source      TEXT NOT NULL DEFAULT 'simulated' CHECK (source = 'simulated')
+);
+CREATE INDEX IF NOT EXISTS sale_dealer_time ON sale (dealer_id, occurred_at);
+
+CREATE TABLE IF NOT EXISTS finance_deal (
+    id           BIGSERIAL PRIMARY KEY,
+    sale_id      BIGINT UNIQUE NOT NULL REFERENCES sale(id) ON DELETE CASCADE,  -- every deal belongs to a real simulated sale
+    dealer_id    INT NOT NULL REFERENCES dealer(id),
+    occurred_at  TIMESTAMPTZ NOT NULL,
+    promotion_id INT REFERENCES promotion(id),
+    source       TEXT NOT NULL DEFAULT 'simulated' CHECK (source = 'simulated')
+);
+CREATE INDEX IF NOT EXISTS finance_deal_dealer_time ON finance_deal (dealer_id, occurred_at);

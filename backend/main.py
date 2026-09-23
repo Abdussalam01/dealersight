@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import config, correlation, db, ingest, metrics
+from backend import config, correlation, db, funnel, ingest, metrics, seed
 from backend.ring_poller import RingPoller
 
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,9 @@ async def lifespan(app):
     with db.connect() as conn:
         db.init_schema(conn)
         ingest.current_session(conn)
+        if not conn.execute("SELECT 1 FROM dealer LIMIT 1").fetchone():
+            seed.seed_all(conn)
+            correlation.rebuild(conn)
     if os.getenv("DISABLE_POLLER") != "1":
         poller.start()
     yield
@@ -88,13 +91,18 @@ class TimingRequest(BaseModel):
 
 @app.post("/api/demo/new-session")
 def new_session(conn=Depends(get_conn)):
-    """Start counting from zero: events that started before now are never counted."""
+    """Reload the same seeded baseline and start a fresh live session.
+
+    Live Ring events from earlier sessions stay in the audit history (recent events)
+    but no longer count toward the dashboard.
+    """
     profile = ingest.current_session(conn)["timing_profile"]
+    seeded = seed.seed_all(conn)
     session = conn.execute(
         "INSERT INTO demo_session (watermark, timing_profile) VALUES (now(), %s) RETURNING *", (profile,)
     ).fetchone()
     correlation.rebuild(conn)
-    return session
+    return {"session": session, "seeded": seeded}
 
 
 @app.post("/api/demo/timing")
@@ -126,6 +134,72 @@ def summary(conn=Depends(get_conn)):
 @app.get("/api/metrics/hourly")
 def hourly(conn=Depends(get_conn)):
     return metrics.hourly_visits(conn)
+
+
+@app.get("/api/dealers")
+def dealer_list(conn=Depends(get_conn)):
+    return funnel.dealers(conn)
+
+
+@app.get("/api/funnel")
+def dealer_funnel(dealer_id: int | None = None, conn=Depends(get_conn)):
+    """Dealer view: the five-stage funnel for the current period, with each stage's sources."""
+    period_a, period_b = funnel.periods()
+    dealer = conn.execute(
+        "SELECT * FROM dealer WHERE id = %s", (dealer_id,)
+    ).fetchone() if dealer_id else conn.execute("SELECT * FROM dealer WHERE is_demo").fetchone()
+    if not dealer:
+        raise HTTPException(404, "no dealership found: seed the demo data first")
+    return {
+        "dealer": dealer,
+        "funnel": funnel.funnel(conn, dealer["id"], *period_b),
+        "comparison": funnel.compare(conn, dealer["id"], period_a, period_b),
+        "patterns": [p for p in funnel.patterns(conn, period_a, period_b) if p["dealer"] == dealer["name"]],
+        "note": "Anonymous operational funnel: stages compare aggregate activity and never follow an individual.",
+    }
+
+
+@app.get("/api/network")
+def network(conn=Depends(get_conn)):
+    """Manufacturer view: aggregates per dealership and region. No individual events."""
+    period_a, period_b = funnel.periods()
+    return funnel.network(conn, period_a, period_b) | {"patterns": funnel.patterns(conn, period_a, period_b)}
+
+
+@app.get("/api/finance")
+def finance(conn=Depends(get_conn)):
+    """Captive-finance view: equal periods before and during the simulated financing promotion."""
+    comparison = funnel.promotion_comparison(conn)
+    if not comparison:
+        raise HTTPException(404, "no promotion found: seed the demo data first")
+    return comparison
+
+
+@app.get("/api/patterns")
+def patterns(conn=Depends(get_conn)):
+    period_a, period_b = funnel.periods()
+    return funnel.patterns(conn, period_a, period_b)
+
+
+@app.get("/api/business/{kind}")
+def business_records(kind: str, dealer_id: int | None = None, conn=Depends(get_conn)):
+    """Simulated sales and finance records behind the last two funnel stages."""
+    if kind not in ("sales", "finance_deals"):
+        raise HTTPException(404, f"unknown record type: {kind}")
+    if kind == "sales":
+        return conn.execute(
+            """SELECT s.occurred_at, s.model_group, s.source, d.name AS dealer,
+                      (f.id IS NOT NULL) AS financed
+               FROM sale s JOIN dealer d ON d.id = s.dealer_id
+               LEFT JOIN finance_deal f ON f.sale_id = s.id
+               WHERE (%s::int IS NULL OR s.dealer_id = %s)
+               ORDER BY s.occurred_at DESC LIMIT 15""", (dealer_id, dealer_id)).fetchall()
+    return conn.execute(
+        """SELECT f.occurred_at, f.source, d.name AS dealer, s.model_group, p.name AS promotion
+           FROM finance_deal f JOIN dealer d ON d.id = f.dealer_id JOIN sale s ON s.id = f.sale_id
+           LEFT JOIN promotion p ON p.id = f.promotion_id
+           WHERE (%s::int IS NULL OR f.dealer_id = %s)
+           ORDER BY f.occurred_at DESC LIMIT 15""", (dealer_id, dealer_id)).fetchall()
 
 
 @app.get("/api/evidence/{kind}")

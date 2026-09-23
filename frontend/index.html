@@ -5,137 +5,255 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DealerSight</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 24px; color: #1a1a1a; background: #fafafa; }
-  h1 { margin: 0 0 4px; }
-  .muted { color: #555; font-size: 14px; }
-  .row { display: flex; gap: 16px; flex-wrap: wrap; margin: 16px 0; }
-  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; }
-  .big { font-size: 48px; font-weight: 700; }
-  button { font-size: 15px; padding: 8px 12px; margin: 4px 4px 0 0; border: 1px solid #888; border-radius: 6px; background: #fff; cursor: pointer; }
-  button.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
-  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 14px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
-  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+  :root { --line: #e3e3e6; --muted: #5a5a63; --ring: #1d4ed8; }
+  body { font-family: system-ui, sans-serif; margin: 20px; color: #17171b; background: #f7f7f9; }
+  h1 { margin: 0; font-size: 26px; }
+  h3 { margin: 18px 0 8px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+  .grow { flex: 1; min-width: 300px; }
+  button { font-size: 14px; padding: 7px 11px; margin: 3px 3px 0 0; border: 1px solid #9a9aa2; border-radius: 6px; background: #fff; cursor: pointer; }
+  button.active { background: var(--ring); color: #fff; border-color: var(--ring); }
+  .tabs button { font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #efeff1; }
+  th { color: var(--muted); font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11.5px; font-weight: 600; }
   .ring { background: #dbeafe; color: #1e3a8a; }
+  .sim { background: #f1f5f9; color: #334155; }
+  .inf { background: #fef3c7; color: #78350f; }
+  .replay { background: #ede9fe; color: #4c1d95; }
   .ok { background: #dcfce7; color: #14532d; }
   .no { background: #f3f4f6; color: #374151; }
   .err { color: #b91c1c; }
-  .inf { background: #fef3c7; color: #78350f; }
-  .replay { background: #ede9fe; color: #4c1d95; }
-  .bar { display: inline-block; height: 12px; background: #1d4ed8; vertical-align: middle; }
+  .up { color: #15803d; } .down { color: #b91c1c; }
+  .stage { display: flex; align-items: baseline; gap: 10px; padding: 8px 6px; border-bottom: 1px solid #efeff1; cursor: pointer; }
+  .stage:hover { background: #f8fafc; }
+  .stage .val { font-size: 26px; font-weight: 700; min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
+  .arrow { padding: 2px 0 2px 84px; font-size: 12.5px; color: var(--muted); }
+  .bar { display: inline-block; height: 10px; background: var(--ring); vertical-align: middle; border-radius: 2px; }
+  .hidden { display: none; }
 </style>
 </head>
 <body>
 <h1>DealerSight</h1>
-<div class="muted">Ring events → stored events → derived dealership activity</div>
-<div id="ring-status" class="muted"></div>
+<div class="muted">Anonymous physical funnel from Ring events. Aggregate activity only: no customer is identified or followed between stages.</div>
+<div id="ring-status" class="muted" style="margin-top:4px"></div>
 
-<div class="row">
-  <div class="card">
-    <div class="muted">Visits <span class="badge inf">Inferred</span></div>
-    <div class="big" id="visits">–</div>
-  </div>
-  <div class="card">
-    <div class="muted">Vehicle-area engagement signals <span class="badge inf">Inferred</span></div>
-    <div class="big" id="engagements">–</div>
-  </div>
-  <div class="card">
-    <div class="muted">Probable test-drive sessions <span class="badge inf">Inferred</span></div>
-    <div class="big" id="sessions">–</div>
-    <div class="muted" id="open-departures"></div>
-  </div>
-  <div class="card">
-    <div class="muted">Test-drive timing</div>
-    <div id="timing" style="margin:6px 0"></div>
-    <button onclick="setTiming('demo')">Demo</button><button onclick="setTiming('production')">Production</button>
-    <div style="margin-top:8px"><button onclick="newSession()">Start new demo session (count from 0)</button></div>
-  </div>
-  <div class="card" style="flex:1; min-width: 320px">
-    <strong>Demo camera assignment</strong>
-    <div class="muted">The Ring Playground has one synthetic camera. Arm it for a camera position, then trigger Motion in the Playground.</div>
-    <div id="positions"></div>
-    <button onclick="disarm()">Disarm</button>
-    <div id="armed" style="margin-top:8px"></div>
+<div class="card" style="margin:14px 0">
+  <div class="row">
+    <div class="grow">
+      <strong>Demo camera assignment</strong>
+      <div class="muted">The Ring Playground exposes one synthetic camera, so demo mode temporarily assigns it to a camera position before you generate an event. In production each Ring device has one configured placement.</div>
+      <div id="positions"></div>
+      <button onclick="disarm()">Disarm</button>
+      <div id="armed" class="muted" style="margin-top:6px"></div>
+    </div>
+    <div>
+      <strong>Test-drive timing</strong>
+      <div id="timing" class="muted" style="margin:4px 0"></div>
+      <button onclick="setTiming('demo')">Demo</button><button onclick="setTiming('production')">Production</button>
+      <div style="margin-top:6px"><button onclick="newSession()">Start new demo session</button></div>
+      <div class="muted" style="max-width:260px">Reloads the same seeded baseline and starts a fresh live session. Earlier Ring events stay in the audit history.</div>
+    </div>
   </div>
 </div>
 
-<div class="row">
-  <div class="card" style="flex:2; min-width: 360px">
-    <strong>Probable test-drive sessions</strong>
-    <div class="muted">Departure-lane event matched to the next Return-lane event inside the timing window (oldest departure first). Time and sequence only; the same vehicle can't be confirmed anonymously.</div>
-    <table><thead><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Ring evidence</th><th>Rule</th></tr></thead><tbody id="session-list"></tbody></table>
-  </div>
-  <div class="card" style="flex:1; min-width: 240px">
-    <strong>Hourly visits</strong>
-    <div id="hourly"></div>
-  </div>
-</div>
-
-<h3>Recent Ring events</h3>
-<table>
-  <thead><tr><th>Started</th><th>Device</th><th>Ring event</th><th>Camera position</th><th>Counted?</th><th>Ref</th></tr></thead>
-  <tbody id="events"></tbody>
-</table>
+<div class="tabs" id="tabs"></div>
+<div id="view"></div>
 
 <script>
-const api = (path, opts) => fetch(path, opts).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
-const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
-const time = t => t ? new Date(t).toLocaleTimeString() : "";
+const api = p => fetch(p).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
+const post = (p, b) => fetch(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) })
+  .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-let armedCode = null;
+const time = t => t ? new Date(t).toLocaleTimeString() : "";
+const day = t => t ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+const pct = v => v === null || v === undefined ? "—" : `${v}%`;
+const delta = v => v === null || v === undefined ? "—" :
+  `<span class="${v > 0 ? "up" : v < 0 ? "down" : ""}">${v > 0 ? "+" : ""}${v}%</span>`;
+const secs = s => s >= 60 ? `${s / 60} min` : `${s} s`;
+const sourceBadge = src => src === "ring_live" ? '<span class="badge ring">Ring</span>'
+  : src === "ring_replay" ? '<span class="badge replay">Ring replay</span>'
+  : `<span class="badge sim">${esc(src === "simulated_baseline" ? "Simulated baseline" : src)}</span>`;
+
+const TABS = { dealer: "Dealer", manufacturer: "Manufacturer", finance: "Captive finance", ring: "Ring events" };
+let tab = "dealer", dealerId = null, openStage = null;
+
+document.getElementById("tabs").innerHTML = Object.entries(TABS)
+  .map(([key, label]) => `<button data-tab="${key}" onclick="show('${key}')">${label}</button>`).join("");
+
+function show(next) { tab = next; openStage = null; refresh(); }
+async function arm(code) { await post("/api/demo/arm", { position: code }).catch(alert); refresh(); }
+async function disarm() { await post("/api/demo/disarm").catch(alert); refresh(); }
+async function setTiming(profile) { await post("/api/demo/timing", { profile }).catch(alert); refresh(); }
+async function newSession() { await post("/api/demo/new-session").catch(alert); refresh(); }
+function pickDealer(id) { dealerId = Number(id); openStage = null; refresh(); }
+function toggleStage(key) { openStage = openStage === key ? null : key; refresh(); }
 
 async function loadPositions() {
   const positions = await api("/api/positions");
   document.getElementById("positions").innerHTML = positions.map(p =>
-    `<button data-code="${p.code}" onclick="arm('${p.code}')" title="${esc(p.zone)}">${esc(p.name)}</button>`).join("");
+    `<button data-code="${p.code}" onclick="arm('${p.code}')" title="Zone: ${esc(p.zone)}">${esc(p.name)}</button>`).join("");
 }
 
-async function arm(code) { await post("/api/demo/arm", { position: code }).catch(alert); refresh(); }
-async function disarm() { await post("/api/demo/disarm").catch(alert); refresh(); }
-async function newSession() { await post("/api/demo/new-session"); refresh(); }
-async function setTiming(profile) { await post("/api/demo/timing", { profile }).catch(alert); refresh(); }
-const secs = s => s >= 60 ? `${s / 60} min` : `${s} s`;
-const sourceBadge = src => src === "ring_live" ? '<span class="badge ring">Ring</span>' : src === "ring_replay" ? '<span class="badge replay">Ring replay</span>' : `<span class="badge no">${esc(src)}</span>`;
+function funnelBlock(data, evidence) {
+  const rates = data.funnel.rates, stages = data.funnel.stages;
+  const between = ["engagement_rate", "probable_test_drive_rate", "sales_conversion", "finance_penetration"];
+  const rateLabel = { engagement_rate: "engagement rate", probable_test_drive_rate: "probable test-drive rate",
+                      sales_conversion: "sales conversion", finance_penetration: "finance penetration" };
+  return stages.map((stage, index) => `
+    <div class="stage" onclick="toggleStage('${stage.key}')">
+      <span class="val">${stage.total}</span>
+      <span><strong>${esc(stage.label)}</strong>
+        <span class="badge ${stage.source_type === "ring" ? "inf" : "sim"}">${stage.source_type === "ring" ? "Ring + inferred" : "Simulated"}</span>
+        <div class="muted">${Object.entries(stage.provenance).map(([k, v]) => `${v} ${esc(k)}`).join(" + ") || "none"}</div>
+      </span>
+    </div>
+    ${openStage === stage.key ? `<div class="card" style="margin:6px 0 6px 84px">${evidence}</div>` : ""}
+    ${index < between.length ? `<div class="arrow">↓ ${rateLabel[between[index]]}: <strong>${pct(rates[between[index]])}</strong></div>` : ""}`).join("");
+}
+
+function evidenceTable(rows, kind) {
+  if (!rows || !rows.length) return '<span class="muted">No records in this period.</span>';
+  if (kind === "sales") return `<div class="muted">Simulated business records (Ring cannot observe a sale).</div><table>
+    <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Financed</th></tr>
+    ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${r.financed ? "yes" : "no"}</td></tr>`).join("")}</table>`;
+  if (kind === "finance_deals") return `<div class="muted">Simulated captive-finance records, each linked to a simulated sale.</div><table>
+    <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Promotion</th></tr>
+    ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${esc(r.promotion || "—")}</td></tr>`).join("")}</table>`;
+  return `<div class="muted">Most recent inferred events and the Ring events behind them.</div><table>
+    <tr><th>When</th><th>Rule</th><th>Ring evidence</th></tr>
+    ${rows.map(r => `<tr><td>${day(r.started_at)} ${time(r.started_at)}${r.duration_minutes ? ` · ${r.duration_minutes} min` : ""}</td>
+      <td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
+      <td>${r.ring_events.map(e => `${sourceBadge(r.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td></tr>`).join("")}</table>`;
+}
+
+const EVIDENCE_KIND = { visits: "visit", engagements: "engagement", probable_test_drives: "probable_test_drive" };
+
+async function dealerView() {
+  const data = await api(`/api/funnel${dealerId ? `?dealer_id=${dealerId}` : ""}`);
+  dealerId = data.dealer.id;
+  const dealers = await api("/api/dealers");
+  const hourly = await api("/api/metrics/hourly");
+  let evidence = "";
+  if (openStage) {
+    const rows = EVIDENCE_KIND[openStage]
+      ? await api(`/api/evidence/${EVIDENCE_KIND[openStage]}`)
+      : await api(`/api/business/${openStage}?dealer_id=${dealerId}`);
+    evidence = evidenceTable(rows, openStage);
+  }
+  const c = data.comparison, peak = Math.max(1, ...hourly.map(h => h.visits));
+  return `
+  <div class="row">
+    <div class="card grow">
+      <div>${dealers.map(d => `<button onclick="pickDealer(${d.id})" class="${d.id === dealerId ? "active" : ""}">${esc(d.name)}${d.is_demo ? " ★" : ""}</button>`).join("")}</div>
+      <div class="muted" style="margin:6px 0">★ receives the live Ring Playground events. Period: ${day(c.period_b.start)} – now vs ${day(c.period_a.start)} – ${day(c.period_a.end)}. Click a stage for its evidence.</div>
+      ${funnelBlock(data, evidence)}
+      <div class="muted" style="margin-top:8px">${esc(data.note)}</div>
+    </div>
+    <div class="card" style="min-width:280px">
+      <strong>Worth investigating</strong>
+      <div class="muted">Detected from the numbers; describes what changed, not why.</div>
+      ${data.patterns.length ? data.patterns.map(p => `<div style="margin-top:8px">• ${esc(p.description)}</div>`).join("") : '<div class="muted" style="margin-top:8px">No pattern flagged this period.</div>'}
+      <h3>Change vs previous period</h3>
+      <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
+        `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>
+      <h3>Hourly visits (live session)</h3>
+      ${hourly.map(h => `<div class="muted">${new Date(h.hour).toLocaleTimeString([], { hour: "numeric" })} <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No live visits yet</span>'}
+    </div>
+  </div>`;
+}
+
+async function manufacturerView() {
+  const view = await api("/api/network");
+  const keys = ["visits", "engagements", "probable_test_drives", "sales", "finance_deals"];
+  const row = (name, extra, data, change) => `<tr><td>${esc(name)}</td><td class="muted">${esc(extra)}</td>
+    ${keys.map(k => `<td class="num">${data[k]}</td>`).join("")}
+    <td class="num">${delta(change.probable_test_drives)}</td><td class="num">${delta(change.sales)}</td></tr>`;
+  const head = `<tr><th>Name</th><th></th>${keys.map(k => `<th class="num">${esc(k.replace(/_/g, " "))}</th>`).join("")}
+    <th class="num">Δ test drives</th><th class="num">Δ sales</th></tr>`;
+  return `
+  <div class="card">
+    <strong>Network view — aggregates only</strong>
+    <div class="muted">Current period per dealership and region. No raw events or footage leave the dealership; the manufacturer view shows counts only.</div>
+    <h3>Dealerships</h3>
+    <table>${head}${view.dealers.map(d => row(d.dealer + (d.is_demo ? " ★" : ""), d.region, d.period_b, d.change_pct)).join("")}</table>
+    <h3>Regions</h3>
+    <table>${head}${view.regions.map(r => row(r.region, `${r.dealers} dealerships`, r.period_b, r.change_pct)).join("")}</table>
+    <h3>Network total</h3>
+    <table>${head}${row("All dealerships", "", view.network.period_b, view.network.change_pct)}</table>
+    <h3>Worth investigating</h3>
+    ${view.patterns.map(p => `<div>• <strong>${esc(p.dealer)}</strong>: ${esc(p.description)}</div>`).join("") || '<span class="muted">Nothing flagged.</span>'}
+  </div>`;
+}
+
+async function financeView() {
+  const f = await api("/api/finance");
+  const keys = ["visits", "engagements", "probable_test_drives", "sales", "finance_deals"];
+  return `
+  <div class="card">
+    <strong>${esc(f.promotion.name)}</strong> <span class="badge sim">Simulated</span>
+    <div class="muted">${day(f.promotion.starts_at)} – ${day(f.promotion.ends_at)}, compared with the equal ${f.equal_durations_days}-day period before it (${day(f.before.start)} – ${day(f.before.end)}).</div>
+    <table style="margin-top:10px">
+      <tr><th>Funnel stage</th><th class="num">Before</th><th class="num">During</th><th class="num">Change</th><th class="num">Per day before</th><th class="num">Per day during</th></tr>
+      ${keys.map(k => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${f.before[k]}</td><td class="num">${f.during[k]}</td>
+        <td class="num">${delta(f.change_pct[k])}</td><td class="num">${f.before.per_day[k]}</td><td class="num">${f.during.per_day[k]}</td></tr>`).join("")}
+      <tr><td><strong>Finance penetration</strong></td><td class="num">${pct(f.before.rates.finance_penetration)}</td>
+        <td class="num">${pct(f.during.rates.finance_penetration)}</td>
+        <td class="num" colspan="3">${f.finance_penetration_change_pts > 0 ? "+" : ""}${f.finance_penetration_change_pts} points during the promotion</td></tr>
+    </table>
+    <div class="muted" style="margin-top:10px">${esc(f.note)} The finance view receives aggregate business metrics only: no footage and no individual customer information.</div>
+  </div>`;
+}
+
+async function ringView() {
+  const [events, sessions] = await Promise.all([api("/api/events/recent"), api("/api/evidence/probable_test_drive")]);
+  return `
+  <div class="card">
+    <strong>Probable test-drive sessions</strong>
+    <div class="muted">A Return-lane event matched to the oldest open Departure-lane event inside the timing window. Time and sequence only: the same vehicle cannot be confirmed anonymously.</div>
+    <table style="margin-top:8px"><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Ring evidence</th><th>Rule</th></tr>
+    ${sessions.slice(0, 8).map(s => `<tr><td>${day(s.started_at)} ${time(s.started_at)}</td><td>${time(s.ended_at)}</td><td>${s.duration_minutes} min</td>
+      <td>${s.ring_events.map(e => `${sourceBadge(s.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td>
+      <td class="muted">${esc(s.confidence)} · ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>'}</table>
+    <h3>Recent Ring events (audit history)</h3>
+    <table><tr><th>Started</th><th>Device</th><th>Ring event</th><th>Camera position</th><th>Counted?</th><th>Ref</th></tr>
+    ${events.map(e => `<tr><td>${day(e.started_at)} ${time(e.started_at)}</td><td>${esc(e.device_name)}</td>
+      <td>${sourceBadge(e.source)} ${esc(e.ring_event_type)}</td>
+      <td>${esc(e.position_name || "–")}${e.zone_source === "demo_assignment" ? ' <span class="muted">(demo assignment)</span>' : ""}</td>
+      <td>${e.accepted ? '<span class="badge ok">Counted</span>' : `<span class="badge no">Not counted: ${esc(e.reject_reason)}</span>`}</td>
+      <td class="muted">…${esc(e.event_ref)}</td></tr>`).join("")}</table>
+  </div>`;
+}
 
 async function refresh() {
-  const [status, summary, events, sessions, hourly] = await Promise.all([api("/api/status"), api("/api/metrics/summary"),
-    api("/api/events/recent"), api("/api/evidence/probable_test_drive"), api("/api/metrics/hourly")]);
+  const status = await api("/api/status");
   const ring = status.ring;
   document.getElementById("ring-status").innerHTML = ring.ok === false
     ? `<span class="err">Ring: ${esc(ring.error)}</span>`
-    : `Ring: ${ring.ok ? "connected" : "connecting…"} · device: ${esc(status.device || "–")} · last poll ${time(ring.last_poll_at)} · counting since ${time(status.watermark)}`;
-  document.getElementById("visits").textContent = summary.visit;
-  document.getElementById("engagements").textContent = summary.engagement;
-  document.getElementById("sessions").textContent = summary.probable_test_drive;
-  document.getElementById("open-departures").textContent = `${summary.open_departures} departure(s) waiting for a return`;
-  const [minGap, maxGap] = summary.test_drive_window_seconds;
-  document.getElementById("timing").innerHTML = `<strong>${summary.timing_profile === "demo" ? "Demo timing" : "Production timing"}</strong>: return ${secs(minGap)}–${secs(maxGap)} after departure<br><span class="muted">rules ${esc(summary.rule_version)}</span>`;
-  document.getElementById("session-list").innerHTML = sessions.map(s => `<tr>
-    <td>${time(s.started_at)}</td><td>${time(s.ended_at)}</td><td>${s.duration_minutes} min</td>
-    <td>${s.ring_events.map(e => `${sourceBadge(s.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td>
-    <td class="muted">${esc(s.confidence)} · ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>';
-  const peak = Math.max(1, ...hourly.map(h => h.visits));
-  document.getElementById("hourly").innerHTML = hourly.map(h =>
-    `<div>${new Date(h.hour).toLocaleTimeString([], { hour: "numeric" })} <span class="bar" style="width:${120 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>';
-
-  armedCode = status.armed ? status.armed.position : null;
-  document.querySelectorAll("#positions button").forEach(b => b.classList.toggle("active", b.dataset.code === armedCode));
+    : `Ring: ${ring.ok ? "connected" : "connecting…"} · device: ${esc(status.device || "–")} · last poll ${time(ring.last_poll_at)} · live session since ${time(status.watermark)}`;
+  document.querySelectorAll("#positions button").forEach(b =>
+    b.classList.toggle("active", status.armed && b.dataset.code === status.armed.position));
   document.getElementById("armed").innerHTML = status.armed
     ? `Armed: <strong>${esc(status.armed.name)}</strong> until ${time(status.armed.until)}`
-    : `<span class="muted">Not armed. New events are stored but not counted.</span>`;
+    : "Not armed. New Ring events are stored in the audit history but not counted.";
 
-  document.getElementById("events").innerHTML = events.map(e => `<tr>
-    <td>${time(e.started_at)}</td>
-    <td>${esc(e.device_name)}</td>
-    <td>${sourceBadge(e.source)} ${esc(e.ring_event_type)}</td>
-    <td>${esc(e.position_name || "–")}${e.zone_source === "demo_assignment" ? ' <span class="muted">(demo assignment)</span>' : ""}</td>
-    <td>${e.accepted ? '<span class="badge ok">Counted</span>' : `<span class="badge no">Not counted: ${esc(e.reject_reason)}</span>`}</td>
-    <td class="muted">…${esc(e.event_ref)}</td></tr>`).join("");
+  const summary = await api("/api/metrics/summary");
+  const [minGap, maxGap] = summary.test_drive_window_seconds;
+  document.getElementById("timing").innerHTML =
+    `<strong>${summary.timing_profile === "demo" ? "Demo timing" : "Production timing"}</strong>: return ${secs(minGap)}–${secs(maxGap)} after departure · rules ${esc(summary.rule_version)}`;
+
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  const render = { dealer: dealerView, manufacturer: manufacturerView, finance: financeView, ring: ringView }[tab];
+  document.getElementById("view").innerHTML = await render().catch(e => `<div class="card err">${esc(e)}</div>`);
 }
 
 loadPositions();
 refresh();
-setInterval(refresh, 2000);
+setInterval(() => { if (!openStage) refresh(); }, 4000);
 </script>
 </body>
 </html>

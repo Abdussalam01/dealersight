@@ -33,10 +33,14 @@ def timing_window(profile, rules=None):
 
 
 def _counted_events(conn, watermark):
+    """Accepted events: the seeded baseline always, live events only since the current session started."""
     return conn.execute(
-        """SELECT e.id, e.device_id, e.started_at, e.ended_at, e.source, p.code AS position, p.zone_id
-           FROM raw_event e JOIN camera_position p ON p.id = e.camera_position_id
-           WHERE e.accepted AND e.started_at >= %s
+        """SELECT e.id, e.device_id, dev.dealer_id, e.started_at, e.ended_at, e.source,
+                  p.code AS position, p.zone_id
+           FROM raw_event e
+           JOIN camera_position p ON p.id = e.camera_position_id
+           JOIN device dev ON dev.id = e.device_id
+           WHERE e.accepted AND (e.source = 'simulated_baseline' OR e.started_at >= %s)
            ORDER BY e.started_at, e.id""",
         (watermark,),
     ).fetchall()
@@ -53,10 +57,13 @@ def rebuild(conn, now=None, rules=None):
     min_gap, max_gap = timing_window(session["timing_profile"], rules)
 
     derived, candidates = [], []
-    last_visit = {}  # device_id -> the visit repeat activity collapses into
+    last_visit = {}   # device -> the visit that repeat activity collapses into
+    open_lots = {}    # dealer -> that dealership's open departures, oldest first
 
     for event in _counted_events(conn, session["watermark"]):
         position = event["position"]
+        # Seeded history is matched with the real-world window; live demo events use the session profile.
+        gaps = timing_window("production", rules) if event["source"] == "simulated_baseline" else (min_gap, max_gap)
 
         if position == "entrance":
             visit = last_visit.get(event["device_id"])
@@ -73,25 +80,28 @@ def rebuild(conn, now=None, rules=None):
                 derived.append(_derived("engagement", event, [event["id"]], "signal", version))
 
         elif position == "lot_departure":
-            candidates.append({
+            candidate = {
                 "departed_event_id": event["id"], "departed_at": event["started_at"],
-                "expires_at": event["started_at"] + max_gap, "status": "open",
+                "expires_at": event["started_at"] + gaps[1], "status": "open",
                 "matched_event_id": None, "zone_id": event["zone_id"], "source": event["source"],
-            })
+            }
+            candidates.append(candidate)
+            open_lots.setdefault(event["dealer_id"], []).append(candidate)
 
         elif position == "lot_return":
-            open_candidates = [c for c in candidates if c["status"] == "open"]
-            for candidate in open_candidates:
-                if candidate["expires_at"] < event["started_at"]:
+            waiting = open_lots.get(event["dealer_id"], [])
+            for candidate in waiting:
+                if candidate["status"] == "open" and candidate["expires_at"] < event["started_at"]:
                     candidate["status"] = "expired"
-            match = next((c for c in candidates if c["status"] == "open"
-                          and event["started_at"] - c["departed_at"] >= min_gap), None)
-            if match:  # otherwise: no open departure, or the return came too soon
+            match = next((c for c in waiting if c["status"] == "open"
+                          and event["started_at"] - c["departed_at"] >= gaps[0]), None)
+            if match:  # otherwise: no open departure at this dealership, or the return came too soon
                 match.update(status="matched", matched_event_id=event["id"])
-                session_event = _derived("probable_test_drive", event, [match["departed_event_id"], event["id"]], "probable", version)
-                session_event["started_at"] = match["departed_at"]
-                session_event["ended_at"] = event["started_at"]
-                derived.append(session_event)
+                drive = _derived("probable_test_drive", event, [match["departed_event_id"], event["id"]], "probable", version)
+                drive["started_at"] = match["departed_at"]
+                drive["ended_at"] = event["started_at"]
+                derived.append(drive)
+            open_lots[event["dealer_id"]] = [c for c in waiting if c["status"] == "open"]
 
     for candidate in candidates:
         if candidate["status"] == "open" and candidate["expires_at"] < now:
@@ -103,7 +113,7 @@ def rebuild(conn, now=None, rules=None):
 
 def _derived(kind, event, source_ids, confidence, version):
     return {
-        "type": kind, "zone_id": event["zone_id"], "started_at": event["started_at"], "ended_at": event["ended_at"],
+        "type": kind, "zone_id": event["zone_id"], "dealer_id": event["dealer_id"], "started_at": event["started_at"], "ended_at": event["ended_at"],
         "confidence": confidence, "rule_version": version, "source_event_ids": source_ids, "source": event["source"],
     }
 
@@ -113,19 +123,19 @@ def _store(conn, derived, candidates, version):
         conn.execute("SELECT pg_advisory_xact_lock(4210)")  # one rebuild at a time (poller vs. API)
         conn.execute("DELETE FROM derived_event")
         conn.execute("DELETE FROM test_drive_candidate")
-        for d in derived:
-            conn.execute(
-                """INSERT INTO derived_event (type, zone_id, started_at, ended_at, confidence, rule_version, source_event_ids, source)
-                   VALUES (%(type)s, %(zone_id)s, %(started_at)s, %(ended_at)s, %(confidence)s, %(rule_version)s,
-                           %(source_event_ids)s, %(source)s)""",
-                d,
-            )
-        for c in candidates:
+        cursor = conn.cursor()
+        cursor.executemany(
+            """INSERT INTO derived_event (type, zone_id, dealer_id, started_at, ended_at, confidence, rule_version,
+                                          source_event_ids, source)
+               VALUES (%(type)s, %(zone_id)s, %(dealer_id)s, %(started_at)s, %(ended_at)s, %(confidence)s,
+                       %(rule_version)s, %(source_event_ids)s, %(source)s)""",
+            derived,
+        )
+        cursor.executemany(
+            """INSERT INTO test_drive_candidate (anon_token, departed_event_id, departed_at, expires_at, status,
+                                                matched_event_id, rule_version)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
             # Short-lived anonymous token only while a departure is open; cleared on match or expiry.
-            token = secrets.token_hex(8) if c["status"] == "open" else None
-            conn.execute(
-                """INSERT INTO test_drive_candidate (anon_token, departed_event_id, departed_at, expires_at, status,
-                                                    matched_event_id, rule_version)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                (token, c["departed_event_id"], c["departed_at"], c["expires_at"], c["status"], c["matched_event_id"], version),
-            )
+            [(secrets.token_hex(8) if c["status"] == "open" else None, c["departed_event_id"], c["departed_at"],
+              c["expires_at"], c["status"], c["matched_event_id"], version) for c in candidates],
+        )
