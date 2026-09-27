@@ -40,6 +40,9 @@ RETRYABLE_ERRORS = {"ThrottlingException", "ServiceUnavailableException", "Inter
 # Wording that asserts a cause. The analyst may describe what changed and what to investigate, never why.
 CAUSAL_PHRASES = ("led to", "leads to", "caused", "causing", "because", "due to", "resulted in", "resulting in",
                   "drove", "driven by", "thanks to", "as a result", "responsible for", "explains the", "reflects the")
+# The project rules require every answer to say that a correlation does not prove a cause.
+DISCLAIMER_PHRASES = ("do not prove", "does not prove", "not prove a cause", "cannot prove", "does not establish",
+                      "do not establish", "no causal", "not causal")
 
 SYSTEM_PROMPT = f"""You explain dealership metrics for DealerSight.
 
@@ -48,7 +51,8 @@ Answer with a single JSON object and nothing else:
  "investigate": ["...", "..."]}}
 
 Rules, all mandatory:
-- "summary": plain prose, at most three sentences. It must contain NO digits at all: every number belongs in
+- "summary": plain prose, at most three sentences. It must end with a sentence saying these metrics do not prove a
+  cause. It must contain NO digits at all: every number belongs in
   "claims", and DealerSight prints those numbers next to your summary. Name metrics in words instead, for example
   "sales conversion fell while probable test drives held steady". Say that these metrics do not prove a cause. If
   the packet does not show the situation the question assumes, say so.
@@ -86,11 +90,19 @@ def sanitize(text):
     return text[:600]
 
 
+def _strip_code_fence(text):
+    """Some models wrap JSON in a markdown fence; unwrap it before parsing."""
+    if not isinstance(text, str):
+        return text
+    fenced = re.match(r"\s*```(?:json)?\s*(.*?)\s*```\s*$", text, re.S)
+    return fenced.group(1) if fenced else text
+
+
 def validate(answer_text, packet):
     """Return (structured answer, list of reasons it fails). Empty reasons means the answer is usable."""
     reasons = []
     try:
-        parsed = json.loads(answer_text)
+        parsed = json.loads(_strip_code_fence(answer_text))
     except (TypeError, ValueError):
         return None, ["model answer was not valid JSON"]
     if not isinstance(parsed, dict):
@@ -114,6 +126,8 @@ def validate(answer_text, packet):
         if phrase in negated:
             reasons.append(f"answer asserted a cause: {phrase!r}")
             break
+    if not any(phrase in spoken for phrase in DISCLAIMER_PHRASES):
+        reasons.append("answer did not state that these metrics do not prove a cause")
     words = len(summary.split()) + sum(len(str(item).split()) for item in investigate)
     if words > MAX_WORDS:
         reasons.append(f"answer was {words} words, over the {MAX_WORDS} word limit")

@@ -230,6 +230,27 @@ def test_numbers_in_the_summary_are_rejected(seeded):
     assert "digits" in result["error"]
 
 
+def test_answer_without_the_causation_disclaimer_is_rejected(seeded):
+    packet = packets.build(seeded, "q1_conversion_decline", now=NOW)
+    client = StubBedrock(answer=answer(summary="Sales conversion fell while probable test drives held steady.",
+                                       claims=[claim(packet, "sales.change_pct")]))
+
+    result = ask(seeded, "q1_conversion_decline", client)
+
+    assert result["answer_source"] == "fallback_rejected"
+    assert "do not prove a cause" in result["error"]
+
+
+def test_json_wrapped_in_a_markdown_fence_is_accepted(seeded):
+    packet = packets.build(seeded, "q1_conversion_decline", now=NOW)
+    body = json.dumps(answer(claims=[claim(packet, "sales.change_pct")]))
+    client = StubBedrock(raw="```json\n" + body + "\n```")
+
+    result = ask(seeded, "q1_conversion_decline", client)
+
+    assert result["answer_source"] == "bedrock"
+
+
 def test_causal_language_is_rejected(seeded):
     packet = packets.build(seeded, "q1_conversion_decline", now=NOW)
     client = StubBedrock(answer=answer(summary="Sales fell because staffing dropped.",
