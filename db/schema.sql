@@ -142,3 +142,25 @@ CREATE TABLE IF NOT EXISTS finance_deal (
     source       TEXT NOT NULL DEFAULT 'simulated' CHECK (source = 'simulated')
 );
 CREATE INDEX IF NOT EXISTS finance_deal_dealer_time ON finance_deal (dealer_id, occurred_at);
+
+-- Phase 4: every analyst call is logged (question, packet, response, model, latency, error).
+CREATE TABLE IF NOT EXISTS analyst_log (
+    id           BIGSERIAL PRIMARY KEY,
+    asked_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    question_id  TEXT NOT NULL,
+    dealer_id    INT REFERENCES dealer(id),
+    packet       JSONB NOT NULL,
+    answer       TEXT,
+    model_answer TEXT,                     -- kept even when the answer is rejected as ungrounded
+    answer_source TEXT NOT NULL,          -- bedrock | fallback | insufficient_data
+    model_id     TEXT,
+    latency_ms   INT,
+    error        TEXT
+);
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS model_answer TEXT;
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS prompt_version TEXT;
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS packet_schema_version TEXT;
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS stop_reason TEXT;
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS input_tokens INT;
+ALTER TABLE analyst_log ADD COLUMN IF NOT EXISTS output_tokens INT;
+CREATE INDEX IF NOT EXISTS analyst_log_time ON analyst_log (asked_at DESC);

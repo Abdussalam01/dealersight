@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import config, correlation, db, funnel, ingest, metrics, seed
+from backend import analyst, config, correlation, db, funnel, ingest, metrics, packets, seed
 from backend.ring_poller import RingPoller
 
 logging.basicConfig(level=logging.INFO)
@@ -194,6 +194,29 @@ def finance(conn=Depends(get_conn)):
 def patterns(conn=Depends(get_conn)):
     period_a, period_b = funnel.periods()
     return funnel.patterns(conn, period_a, period_b)
+
+
+class AnalystRequest(BaseModel):
+    question_id: str
+    dealer_id: int | None = None
+
+
+@app.get("/api/analyst/questions")
+def analyst_questions():
+    return [{"id": key, **value} for key, value in packets.QUESTIONS.items()]
+
+
+@app.post("/api/analyst/ask")
+def analyst_ask(request: AnalystRequest, conn=Depends(get_conn)):
+    """Answer one of the fixed questions from a computed metric packet (no free text)."""
+    if request.question_id not in packets.QUESTIONS:
+        raise HTTPException(404, f"unknown question: {request.question_id}")
+    return analyst.ask(conn, request.question_id, request.dealer_id)
+
+
+@app.get("/api/analyst/log")
+def analyst_log(conn=Depends(get_conn)):
+    return analyst.recent_calls(conn)
 
 
 @app.get("/api/business/{kind}")
