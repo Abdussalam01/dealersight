@@ -88,8 +88,14 @@ pytest
 
 Tests use a separate `dealersight_test` database on the same Postgres container.
 
+## AWS
+
+Amazon Bedrock (Converse API, `amazon.nova-pro-v1:0`, us-east-1) powers the grounded analyst; AWS IAM scopes the project's credentials to Bedrock invocation only. No other AWS service is used. Setup, the IAM policy, failure handling and the model benchmark are in [`docs/aws.md`](docs/aws.md).
+
 ## Project notes
 
 - `docs/scope.md`: data provenance, zones, camera positions, gates
 - `docs/ring-findings.md`: what the Ring Playground and API actually return
 - `docs/friction-log.md`: developer friction with evidence in `docs/evidence/`
+- `docs/aws.md`: AWS services, setup, model benchmark
+- `docs/product-feedback.md`: feedback on every tool, API and SDK used
