@@ -20,7 +20,7 @@ async def lifespan(app):
     with db.connect() as conn:
         db.init_schema(conn)
         ingest.current_session(conn)
-        if not conn.execute("SELECT 1 FROM dealer LIMIT 1").fetchone():
+        if seed.is_stale(conn):   # first run, or the demo data has aged out of the current period
             seed.seed_all(conn)
             correlation.rebuild(conn)
     if os.getenv("DISABLE_POLLER") != "1":
@@ -59,6 +59,7 @@ def status(conn=Depends(get_conn)):
         "device": device["display_name"] if device else None,
         "armed": {"position": armed["position_code"], "name": armed["position_name"], "until": armed["valid_to"]} if armed else None,
         "watermark": ingest.current_session(conn)["watermark"],
+        "seed_data_stale": seed.is_stale(conn),
         "server_time": now,
     }
 

@@ -206,6 +206,12 @@ def test_hourly_chart_uses_the_dealership_timezone(seeded, spans):
     assert utc_hours and shifted != utc_hours  # the timezone argument actually applies
 
 
+def test_seed_is_reported_stale_once_the_data_ages(seeded):
+    from datetime import timedelta
+    assert seed.is_stale(seeded, today=SEED_DAY) is False
+    assert seed.is_stale(seeded, today=SEED_DAY + timedelta(days=5)) is True
+
+
 # --- determinism ------------------------------------------------------------------
 
 def test_reseeding_restores_the_same_numbers(seeded, spans):

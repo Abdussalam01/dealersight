@@ -51,6 +51,19 @@ def period_bounds(today):
     return (end_b - timedelta(days=14), end_b - timedelta(days=7)), (end_b - timedelta(days=7), end_b)
 
 
+def is_stale(conn, today=None):
+    """True when the seeded history no longer covers the current comparison period.
+
+    The demo data is generated relative to "today", so it has to be regenerated when the
+    application is used on a later day; otherwise the recent period runs past the data.
+    """
+    today = today or datetime.now(timezone.utc).date()
+    latest = conn.execute("SELECT max(occurred_at) AS latest FROM sale").fetchone()["latest"]
+    if latest is None:
+        return True
+    return latest.date() < today - timedelta(days=1)
+
+
 def seed_all(conn, today=None, seed=SEED):
     today = today or datetime.now(timezone.utc).date()
     (start_a, end_a), (start_b, end_b) = period_bounds(today)
