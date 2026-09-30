@@ -31,7 +31,15 @@ def conn():
 
 
 @pytest.fixture
-def device_id(conn):
+def demo_dealer(conn):
+    """A camera must belong to a dealership before its events can count, as in production."""
+    return conn.execute(
+        "INSERT INTO dealer (code, name, region, is_demo) VALUES ('demo', 'Demo Motors', 'Northgate', true) RETURNING id"
+    ).fetchone()["id"]
+
+
+@pytest.fixture
+def device_id(conn, demo_dealer):
     return ingest.ensure_device(conn, RING_DEVICE, "Playground Device", mode="demo")
 
 

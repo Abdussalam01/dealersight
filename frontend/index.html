@@ -119,18 +119,21 @@ function funnelBlock(data, evidence) {
     ${index < between.length ? `<div class="arrow">↓ ${rateLabel[between[index]]}: <strong>${pct(rates[between[index]])}</strong></div>` : ""}`).join("");
 }
 
-function evidenceTable(rows, kind) {
-  if (!rows || !rows.length) return '<span class="muted">No records in this period.</span>';
-  if (kind === "sales") return `<div class="muted">Simulated business records (Ring cannot observe a sale).</div><table>
+function evidenceTable(rows, kind, meta) {
+  const counted = meta
+    ? `<div class="muted">Showing ${meta.shown} of ${meta.matching_rows} record(s) matching this dealership, period and source.${meta.note ? " " + esc(meta.note) : ""}</div>`
+    : "";
+  if (!rows || !rows.length) return counted || '<span class="muted">No records in this period.</span>';
+  if (kind === "sales") return `${counted}<div class="muted">Simulated business records (Ring cannot observe a sale).</div><table>
     <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Financed</th></tr>
     ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${r.financed ? "yes" : "no"}</td></tr>`).join("")}</table>`;
-  if (kind === "finance_deals") return `<div class="muted">Simulated captive-finance records, each linked to a simulated sale.</div><table>
+  if (kind === "finance_deals") return `${counted}<div class="muted">Simulated captive-finance records, each linked to a simulated sale.</div><table>
     <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Promotion</th></tr>
     ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${esc(r.promotion || "—")}</td></tr>`).join("")}</table>`;
-  return `<div class="muted">Underlying event references, each labelled <span class="badge ring">Ring</span> (live Ring Playground API event) or <span class="badge sim">Simulated baseline</span> (seeded demo history in Ring event shape).</div><table>
-    <tr><th>When</th><th>Rule</th><th>Ring evidence</th></tr>
+  return `${counted}<div class="muted">Underlying event references, each labelled <span class="badge ring">Ring</span> (live Ring Playground API event) or <span class="badge sim">Simulated baseline</span> (seeded demo history in Ring event shape).</div><table>
+    <tr><th>When</th><th>Dealership</th><th>Rule</th><th>Event references</th></tr>
     ${rows.map(r => `<tr><td>${day(r.started_at)} ${time(r.started_at)}${r.duration_minutes ? ` · ${r.duration_minutes} min` : ""}</td>
-      <td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
+      <td>${esc(r.dealer || "—")}</td><td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
       <td>${r.ring_events.map(e => `${sourceBadge(r.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td></tr>`).join("")}</table>`;
 }
 
@@ -143,10 +146,10 @@ async function dealerView() {
   const hourly = await api(`/api/metrics/hourly?scope=${scope}&dealer_id=${dealerId || ""}`);
   let evidence = "";
   if (openStage) {
-    const rows = EVIDENCE_KIND[openStage]
-      ? await api(`/api/evidence/${EVIDENCE_KIND[openStage]}`)
-      : await api(`/api/business/${openStage}?dealer_id=${dealerId}`);
-    evidence = evidenceTable(rows, openStage);
+    const result = EVIDENCE_KIND[openStage]
+      ? await api(`/api/evidence/${EVIDENCE_KIND[openStage]}?scope=${scope}&dealer_id=${dealerId}`)
+      : await api(`/api/business/${openStage}?scope=${scope}&dealer_id=${dealerId}`);
+    evidence = evidenceTable(result.rows, openStage, result);
   }
   const c = data.comparison, peak = Math.max(1, ...hourly.map(h => h.visits));
   const sidePanel = c ? `
@@ -228,7 +231,9 @@ async function financeView() {
 }
 
 async function ringView() {
-  const [events, sessions] = await Promise.all([api("/api/events/recent"), api("/api/evidence/probable_test_drive")]);
+  const [events, sessionEvidence] = await Promise.all([api("/api/events/recent"),
+                                                       api("/api/evidence/probable_test_drive")]);
+  const sessions = sessionEvidence.rows;
   return `
   <div class="card">
     <strong>Probable test-drive sessions</strong>
@@ -278,7 +283,7 @@ function packetTable(packet) {
     Object.entries(packet.stages).forEach(([k, v]) => add(k.replace(/_/g, " "), `${v.before} → ${v.during} (${v.change_pct ?? "—"}%)`));
     const f = packet.finance_penetration_pct;
     add("finance penetration", `${pct(f.before)} → ${pct(f.during)} (${f.change_points} pts)`);
-    add("counts", `${f.counts.before} → ${f.counts.during}`);
+    add("counts", `${f.counts.before.text} → ${f.counts.during.text}`);
   }
   Object.entries(packet.data_sources || {}).forEach(([k, v]) => add(`source: ${k.replace(/_/g, " ")}`, v));
   return `<table>${rows.join("")}</table>`;

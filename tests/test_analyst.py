@@ -86,7 +86,8 @@ def test_every_required_question_builds_a_packet_with_addressable_metrics(seeded
         packet = packets.build(seeded, question_id, now=NOW)
         assert packet["question"] and not packet.get("insufficient_data")
         assert packet["metrics"] and packet["packet_schema_version"]
-        assert packet["data_sources"]["sales"].startswith("Simulated")
+        assert "simulated" in packet["data_sources"]["sales"]
+        assert "inferred" in packet["data_sources"]["visits"]
         assert "does not prove a cause" in packet["caveat"]
         for metric in packet["metrics"].values():
             assert metric["unit"] in packets.UNITS and metric["label"] and metric["scope"]

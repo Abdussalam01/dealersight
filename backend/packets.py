@@ -38,14 +38,21 @@ QUESTIONS = {
     },
 }
 
-DATA_SOURCES = {
-    "visits": "Ring events (inferred by DealerSight rules)",
-    "engagements": "Ring events (inferred by DealerSight rules)",
-    "probable_test_drives": "Ring events (inferred by DealerSight rules)",
-    "sales": "Simulated business data",
-    "finance_deals": "Simulated business data",
+# How a stage is produced. Origin (where the events came from) is reported separately per packet,
+# because a simulated baseline event and a live Ring event both go through the same rules.
+STAGE_METHOD = {
+    "visits": "inferred by DealerSight rules from camera activity",
+    "engagements": "inferred by DealerSight rules from camera activity",
+    "probable_test_drives": "inferred by DealerSight rules from camera activity",
+    "sales": "simulated business record",
+    "finance_deals": "simulated business record",
 }
-STAGES = list(DATA_SOURCES)
+STAGES = list(STAGE_METHOD)
+# Keys are the labels the funnel reports per stage.
+ORIGIN_LABELS = {"Live Ring Playground": "live Ring Playground events (Ring-originated)",
+                 "Ring replay": "replayed recorded Ring events",
+                 "Simulated baseline": "simulated baseline events (Ring event shape, not Ring-originated)",
+                 "Simulated business data": "simulated business records"}
 
 
 def _iso(moment):
@@ -54,6 +61,16 @@ def _iso(moment):
 
 def _period(bounds):
     return {"start": _iso(bounds[0]), "end": _iso(bounds[1])}
+
+
+def origins(funnel_result):
+    """Per-stage event origin taken from the funnel that produced the numbers."""
+    described = {}
+    for stage in funnel_result["stages"]:
+        parts = [f"{count} {ORIGIN_LABELS.get(label, label)}" if label in ORIGIN_LABELS else f"{count} {label}"
+                 for label, count in stage["provenance"].items()]
+        described[stage["key"]] = "; ".join(parts) or "none in this period"
+    return described
 
 
 def _insufficient(question_id, reason, **extra):
@@ -82,7 +99,7 @@ def build(conn, question_id, dealer_id=None, now=None):
     packet = builder(conn, dealer_id, period_a, period_b)
     packet.setdefault("rule_version", correlation.load_rules()["rule_version"])
     packet.setdefault("packet_schema_version", PACKET_SCHEMA_VERSION)
-    packet.setdefault("data_sources", DATA_SOURCES)
+    packet.setdefault("data_sources", STAGE_METHOD)
     packet.setdefault("caveat", "Aggregate anonymous activity. Ring-derived stages are inferred; sales and finance "
                                 "records are simulated. A correlation between stages does not prove a cause.")
     return packet
@@ -99,6 +116,8 @@ def _q1(conn, dealer_id, period_a, period_b):
 
     comparison = funnel.compare(conn, dealer["id"], period_a, period_b)
     a, b = comparison["period_a"], comparison["period_b"]
+    origin = {"period_a": origins(funnel.funnel(conn, dealer["id"], *period_a)),
+              "period_b": origins(funnel.funnel(conn, dealer["id"], *period_b))}
     if not a["visits"] or not b["visits"]:
         return _insufficient(question_id, "no visits recorded in one of the periods",
                              dealer=dealer["name"], period_a=_period(period_a), period_b=_period(period_b))
@@ -133,6 +152,7 @@ def _q1(conn, dealer_id, period_a, period_b):
         "period_b": _period(period_b),
         "stages": {key: {"a": a[key], "b": b[key], "change_pct": comparison["change_pct"][key]} for key in STAGES},
         "rates_pct": rates,
+        "event_origins": origin,
         "metrics": metrics,
     }
 
@@ -162,6 +182,8 @@ def _q2(conn, _dealer_id, period_a, period_b):
                if row["probable_test_drives"]["change_pct"] >= thresholds["growth_pct"]
                and abs(row["sales"]["change_pct"]) <= thresholds["stable_pct"]]
     metrics = {}
+    origin = {"period_a": origins(funnel.funnel(conn, None, *period_a)),
+              "period_b": origins(funnel.funnel(conn, None, *period_b))}
     span = f"{_period(period_a)['start']} to {_period(period_b)['end']}"
     for row in rows:
         code = row["dealer"].lower().replace(" ", "_")
@@ -181,6 +203,7 @@ def _q2(conn, _dealer_id, period_a, period_b):
         "period_a": _period(period_a),
         "period_b": _period(period_b),
         "metrics": metrics,
+        "event_origins": origin,
         "ranking_rule": "dealerships sorted by probable test-drive growth minus sales growth, computed in application code",
         "threshold_rule": f"flagged when probable test drives rose at least {thresholds['growth_pct']}% "
                           f"and sales stayed within +/-{thresholds['stable_pct']}%",
@@ -190,9 +213,13 @@ def _q2(conn, _dealer_id, period_a, period_b):
 
 
 def _q3(conn, dealer_id, _period_a, _period_b):
-    """Financing promotion measured across the full funnel against an equal period before it."""
+    """Financing promotion measured across the full funnel against an equal period before it.
+
+    Always network-wide, matching the captive-finance screen, so a dealership chosen on another
+    tab cannot silently narrow a network-level question (CR-06).
+    """
     question_id = "q3_promotion_performance"
-    comparison = funnel.promotion_comparison(conn, dealer_id=dealer_id)
+    comparison = funnel.promotion_comparison(conn, dealer_id=None)
     if not comparison:
         return _insufficient(question_id, "no financing promotion is configured")
     before, during = comparison["before"], comparison["during"]
@@ -222,7 +249,12 @@ def _q3(conn, dealer_id, _period_a, _period_b):
     return {
         "question_id": question_id,
         "question": QUESTIONS[question_id]["text"],
+        "scope": "All dealerships in the network (same scope as the captive-finance screen)",
         "metrics": metrics,
+        "event_origins": {
+            "before": origins(funnel.funnel(conn, None, before["start"], before["end"])),
+            "during": origins(funnel.funnel(conn, None, during["start"], during["end"])),
+        },
         "promotion": comparison["promotion"]["name"],
         "equal_durations_days": comparison["equal_durations_days"],
         "period_before": {"start": before["start"].strftime("%Y-%m-%d"), "end": before["end"].strftime("%Y-%m-%d")},

@@ -50,7 +50,9 @@ def replay(conn, scenario, base, run_id, now=None):
     conn.execute(
         "INSERT INTO demo_session (watermark, timing_profile) VALUES (%s, %s)", (base, scenario["timing_profile"])
     )
-    device_id = ingest.ensure_device(conn, REPLAY_DEVICE, REPLAY_DEVICE_NAME, mode="demo")
+    dealer = conn.execute("SELECT id FROM dealer WHERE is_demo").fetchone()
+    device_id = ingest.ensure_device(conn, REPLAY_DEVICE, REPLAY_DEVICE_NAME, mode="demo",
+                                     dealer_id=dealer["id"] if dealer else None)
     results = []
     for index, (offset, position, seconds) in enumerate(sorted(scenario["steps"])):
         start = base + timedelta(minutes=offset)

@@ -22,7 +22,7 @@ class FakeRingClient:
         return self.pages[index], str(next_index) if next_index is not None else None
 
 
-def test_repeated_polls_ingest_each_event_once(conn):
+def test_repeated_polls_ingest_each_event_once(conn, demo_dealer):
     now = ingest.utcnow()
     ingest.start_session(conn, now=now - timedelta(minutes=30))
     device_id = ingest.ensure_device(conn, RING_DEVICE, "Playground Device", mode="demo")
@@ -39,7 +39,7 @@ def test_repeated_polls_ingest_each_event_once(conn):
     assert metrics.visit_count(conn) == 2
 
 
-def test_later_polls_stop_at_first_known_event(conn):
+def test_later_polls_stop_at_first_known_event(conn, demo_dealer):
     now = ingest.utcnow()
     ingest.start_session(conn, now=now - timedelta(hours=2))
     ingest.ensure_device(conn, RING_DEVICE, "Playground Device", mode="demo")

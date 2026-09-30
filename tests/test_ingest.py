@@ -53,6 +53,25 @@ def test_event_after_arm_expires_is_not_counted(conn, device_id):
     assert visits(conn) == 0
 
 
+def test_event_from_a_camera_with_no_dealership_is_not_counted(conn):
+    """A camera discovered before any dealership exists must not produce metrics."""
+    orphan = ingest.ensure_device(conn, "ava1.ring.device.ORPHAN", "Unassigned camera", mode="demo")
+    ingest.arm(conn, orphan, "entrance", now=T0)
+
+    result = ingest.ingest(conn, history_event("evt-1", T0 + minutes(1), device="ava1.ring.device.ORPHAN"),
+                           now=T0 + minutes(2))
+
+    assert result == {"status": "rejected", "reason": "no_dealership"}
+    assert visits(conn) == 0
+
+
+def test_a_camera_discovered_after_seeding_is_bound_to_the_demo_dealership(conn, demo_dealer):
+    device = ingest.ensure_device(conn, "ava1.ring.device.NEW", "Playground Device", mode="demo")
+
+    row = conn.execute("SELECT dealer_id FROM device WHERE id = %s", (device,)).fetchone()
+    assert row["dealer_id"] == demo_dealer
+
+
 # --- Supporting rules -------------------------------------------------------
 
 def test_position_comes_from_event_start_time_not_arrival_time(conn, device_id):
@@ -82,8 +101,9 @@ def test_event_before_watermark_is_not_counted(conn, device_id):
     assert result == {"status": "rejected", "reason": "before_watermark"}
 
 
-def test_production_mode_excludes_live_view_events(conn):
-    device_id = ingest.ensure_device(conn, "ava1.ring.device.PROD", "Front Door", mode="production")
+def test_production_mode_excludes_live_view_events(conn, demo_dealer):
+    device_id = ingest.ensure_device(conn, "ava1.ring.device.PROD", "Front Door", mode="production",
+                                     dealer_id=demo_dealer)
     conn.execute(
         """INSERT INTO device_assignment (device_id, camera_position_id, valid_from, zone_source)
            SELECT %s, id, %s, 'device_configuration' FROM camera_position WHERE code = 'entrance'""",

@@ -221,31 +221,53 @@ def analyst_log(conn=Depends(get_conn)):
 
 
 @app.get("/api/business/{kind}")
-def business_records(kind: str, dealer_id: int | None = None, conn=Depends(get_conn)):
-    """Simulated sales and finance records behind the last two funnel stages."""
+def business_records(kind: str, dealer_id: int | None = None, scope: str = "all", conn=Depends(get_conn)):
+    """Simulated sales and finance records behind the last two funnel stages, for the shown period."""
     if kind not in ("sales", "finance_deals"):
         raise HTTPException(404, f"unknown record type: {kind}")
+    if scope == "live":
+        # Business records are excluded from the live-session view, so there is nothing to show.
+        return {"matching_rows": 0, "shown": 0, "rows": [],
+                "note": "Simulated business records are not part of the live-session view."}
+    _, period = funnel.periods()
     if kind == "sales":
-        return conn.execute(
+        rows = conn.execute(
             """SELECT s.occurred_at, s.model_group, s.source, d.name AS dealer,
                       (f.id IS NOT NULL) AS financed
                FROM sale s JOIN dealer d ON d.id = s.dealer_id
                LEFT JOIN finance_deal f ON f.sale_id = s.id
-               WHERE (%s::int IS NULL OR s.dealer_id = %s)
-               ORDER BY s.occurred_at DESC LIMIT 15""", (dealer_id, dealer_id)).fetchall()
-    return conn.execute(
+               WHERE (%s::int IS NULL OR s.dealer_id = %s) AND s.occurred_at >= %s AND s.occurred_at < %s
+               ORDER BY s.occurred_at DESC LIMIT 15""",
+            (dealer_id, dealer_id, period[0], period[1])).fetchall()
+        total = conn.execute(
+            """SELECT count(*) AS n FROM sale
+               WHERE (%s::int IS NULL OR dealer_id = %s) AND occurred_at >= %s AND occurred_at < %s""",
+            (dealer_id, dealer_id, period[0], period[1])).fetchone()["n"]
+        return {"matching_rows": total, "shown": len(rows), "rows": rows}
+    rows = conn.execute(
         """SELECT f.occurred_at, f.source, d.name AS dealer, s.model_group, p.name AS promotion
            FROM finance_deal f JOIN dealer d ON d.id = f.dealer_id JOIN sale s ON s.id = f.sale_id
            LEFT JOIN promotion p ON p.id = f.promotion_id
-           WHERE (%s::int IS NULL OR f.dealer_id = %s)
-           ORDER BY f.occurred_at DESC LIMIT 15""", (dealer_id, dealer_id)).fetchall()
+           WHERE (%s::int IS NULL OR f.dealer_id = %s) AND f.occurred_at >= %s AND f.occurred_at < %s
+           ORDER BY f.occurred_at DESC LIMIT 15""",
+        (dealer_id, dealer_id, period[0], period[1])).fetchall()
+    total = conn.execute(
+        """SELECT count(*) AS n FROM finance_deal
+           WHERE (%s::int IS NULL OR dealer_id = %s) AND occurred_at >= %s AND occurred_at < %s""",
+        (dealer_id, dealer_id, period[0], period[1])).fetchone()["n"]
+    return {"matching_rows": total, "shown": len(rows), "rows": rows}
 
 
 @app.get("/api/evidence/{kind}")
-def evidence(kind: str, conn=Depends(get_conn)):
+def evidence(kind: str, dealer_id: int | None = None, scope: str = "all", conn=Depends(get_conn)):
+    """The derived events behind one displayed number, filtered to the same selection."""
     if kind not in metrics.LABELS:
         raise HTTPException(404, f"unknown metric: {kind}")
-    return metrics.evidence(conn, kind)
+    _, period = funnel.periods()
+    if scope == "live":
+        period = (ingest.current_session(conn)["watermark"], period[1])
+    return metrics.evidence(conn, kind, dealer_id=dealer_id, start=period[0], end=period[1],
+                            sources=["ring_live"] if scope == "live" else None)
 
 
 app.mount("/", StaticFiles(directory=config.ROOT / "frontend", html=True), name="frontend")

@@ -51,12 +51,20 @@ def normalize_history_event(payload, now=None):
     return normalized
 
 
-def ensure_device(conn, ring_device_id, display_name, mode=None):
+def ensure_device(conn, ring_device_id, display_name, mode=None, dealer_id=None):
+    """Register a device. A demo camera discovered from Ring is bound to the demo dealership
+    straight away, so the first live event lands on the dealership the demo shows."""
+    mode = mode or config.DEVICE_MODE
+    if dealer_id is None and mode == "demo" and not ring_device_id.startswith("replay."):
+        demo = conn.execute("SELECT id FROM dealer WHERE is_demo").fetchone()
+        dealer_id = demo["id"] if demo else None
     row = conn.execute(
-        """INSERT INTO device (ring_device_id, display_name, mode) VALUES (%s, %s, %s)
-           ON CONFLICT (ring_device_id) DO UPDATE SET display_name = EXCLUDED.display_name
+        """INSERT INTO device (ring_device_id, display_name, mode, dealer_id) VALUES (%s, %s, %s, %s)
+           ON CONFLICT (ring_device_id) DO UPDATE
+               SET display_name = EXCLUDED.display_name,
+                   dealer_id = COALESCE(device.dealer_id, EXCLUDED.dealer_id)
            RETURNING id""",
-        (ring_device_id, display_name, mode or config.DEVICE_MODE),
+        (ring_device_id, display_name, mode, dealer_id),
     ).fetchone()
     return row["id"]
 
@@ -115,7 +123,7 @@ def ingest(conn, payload, source="ring_live", now=None):
         return {"status": "invalid", "reason": str(exc)}
 
     device = conn.execute(
-        "SELECT id, mode FROM device WHERE ring_device_id = %s", (event["ring_device_id"],)
+        "SELECT id, mode, dealer_id FROM device WHERE ring_device_id = %s", (event["ring_device_id"],)
     ).fetchone()
     if not device:
         return {"status": "invalid", "reason": "unknown device"}
@@ -129,6 +137,8 @@ def ingest(conn, payload, source="ring_live", now=None):
         reason = "live_view"
     elif not assignment:
         reason = "not_armed" if device["mode"] == "demo" else "unassigned"
+    elif device["dealer_id"] is None:
+        reason = "no_dealership"   # never count activity that cannot be attributed to a dealership
 
     row = conn.execute(
         """INSERT INTO raw_event (ring_event_id, device_id, ring_event_type, started_at, ended_at, received_at,

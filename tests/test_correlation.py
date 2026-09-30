@@ -59,7 +59,7 @@ def test_engagement_threshold_boundary(conn, device_id):
     counts = rebuild(conn)
 
     assert counts["engagement"] == 1
-    assert metrics.evidence(conn, "engagement")[0]["ring_events"][0]["position"] == "Display Area"
+    assert metrics.evidence(conn, "engagement")["rows"][0]["ring_events"][0]["position"] == "Display Area"
 
 
 # --- Zone 3: probable test-drive sessions --------------------------------------
@@ -69,7 +69,7 @@ def test_departure_and_return_in_window_is_one_probable_session(conn, device_id)
     activity(conn, device_id, "ret", "lot_return", at(3))
 
     assert rebuild(conn)["probable_test_drive"] == 1
-    session = metrics.evidence(conn, "probable_test_drive")[0]
+    session = metrics.evidence(conn, "probable_test_drive")["rows"][0]
     assert session["confidence"] == "probable"
     assert session["duration_minutes"] == 2.0
     assert [e["position"] for e in session["ring_events"]] == ["Lot: Departure lane", "Lot: Return lane"]
@@ -114,7 +114,7 @@ def test_overlapping_departures_match_oldest_first(conn, device_id):
     activity(conn, device_id, "ret2", "lot_return", at(4))
 
     assert rebuild(conn)["probable_test_drive"] == 2
-    durations = sorted(s["duration_minutes"] for s in metrics.evidence(conn, "probable_test_drive"))
+    durations = sorted(s["duration_minutes"] for s in metrics.evidence(conn, "probable_test_drive")["rows"])
     assert durations == [2.0, 2.0]  # dep1->ret1 and dep2->ret2, not dep1->ret2
 
 
@@ -152,7 +152,7 @@ def test_timing_profiles_use_documented_windows(conn, device_id):
 
 # --- Replay ------------------------------------------------------------------
 
-def test_scenario_a_produces_expected_counts(conn):
+def test_scenario_a_produces_expected_counts(conn, demo_dealer):
     base = T0 + timedelta(hours=1)
     _, counts = replay(conn, SCENARIO_A, base, run_id="t", now=base + timedelta(hours=3))
 
@@ -162,7 +162,7 @@ def test_scenario_a_produces_expected_counts(conn):
     assert expired == expected["expired_departures"]
 
 
-def test_repeated_replay_gives_identical_metrics(conn):
+def test_repeated_replay_gives_identical_metrics(conn, demo_dealer):
     base = T0 + timedelta(hours=1)
     now = base + timedelta(hours=3)
     _, first = replay(conn, SCENARIO_A, base, run_id="t", now=now)
