@@ -84,11 +84,20 @@ def funnel(conn, dealer_id=None, start=None, end=None, sources=None):
 
 
 def periods(now=None):
-    """Period A = the 7 seeded days before last week. Period B = the last 7 seeded days plus
-    anything live so far today, so a live Ring event shows up in the current period."""
+    """Two comparison periods of equal elapsed length.
+
+    Period B runs from the start of the most recent seeded week up to now, so a live Ring event
+    appears in the current period. Period A is the same number of hours immediately before it, so
+    raw counts are never compared across unequal exposure (CR-12).
+    """
     now = now or ingest.utcnow()
-    (start_a, end_a), (start_b, _) = seed.period_bounds(now.date())
-    return (start_a, end_a), (start_b, now)
+    (_, _), (start_b, _) = seed.period_bounds(now.date())
+    span = now - start_b
+    return (start_b - span, start_b), (start_b, now)
+
+
+def coverage_hours(period):
+    return round((period[1] - period[0]).total_seconds() / 3600, 1)
 
 
 def dealers(conn):
@@ -98,9 +107,15 @@ def dealers(conn):
 def compare(conn, dealer_id, period_a, period_b):
     """Two periods side by side with percentage changes, for one dealership."""
     a, b = funnel(conn, dealer_id, *period_a), funnel(conn, dealer_id, *period_b)
+    hours_a, hours_b = coverage_hours(period_a), coverage_hours(period_b)
     return {
-        "period_a": {"start": period_a[0], "end": period_a[1], **a["counts"], "rates": a["rates"]},
-        "period_b": {"start": period_b[0], "end": period_b[1], **b["counts"], "rates": b["rates"]},
+        "period_a": {"start": period_a[0], "end": period_a[1], **a["counts"], "rates": a["rates"],
+                     "coverage_hours": hours_a,
+                     "per_day": {key: round(value / max(hours_a / 24, 0.01), 2) for key, value in a["counts"].items()}},
+        "period_b": {"start": period_b[0], "end": period_b[1], **b["counts"], "rates": b["rates"],
+                     "coverage_hours": hours_b,
+                     "per_day": {key: round(value / max(hours_b / 24, 0.01), 2) for key, value in b["counts"].items()}},
+        "equal_coverage": abs(hours_a - hours_b) < 0.1,
         "change_pct": {key: change_pct(a["counts"][key], b["counts"][key]) for key in a["counts"]},
     }
 
@@ -178,9 +193,16 @@ def promotion_comparison(conn, code=None, dealer_id=None):
         **periods,
         "change_pct": {key: change_pct(periods["before"][key], periods["during"][key])
                        for key in ("visits", "engagements", "probable_test_drives", "sales", "finance_deals")},
-        "finance_penetration_change_pts": None if periods["before"]["rates"]["finance_penetration"] is None
-        else round((periods["during"]["rates"]["finance_penetration"] or 0)
+        # Undefined either side means the difference is undefined, never a number.
+        "finance_penetration_change_pts": None
+        if periods["before"]["rates"]["finance_penetration"] is None
+        or periods["during"]["rates"]["finance_penetration"] is None
+        else round(periods["during"]["rates"]["finance_penetration"]
                    - periods["before"]["rates"]["finance_penetration"], 1),
+        "finance_penetration_unavailable_reason":
+            None if periods["before"]["rates"]["finance_penetration"] is not None
+            and periods["during"]["rates"]["finance_penetration"] is not None
+            else "no simulated sales in one of the periods, so finance penetration cannot be compared",
         "note": "Simulated business data. A difference between periods does not prove the promotion caused it.",
     }
 

@@ -31,8 +31,8 @@ from psycopg.types.json import Jsonb
 from backend import config, packets
 
 PROMPT_VERSION = "2026-09-23.1"
-DEADLINE_SECONDS = 10          # total budget for the whole attempt, including one retry
-READ_TIMEOUT_SECONDS = 6
+DEADLINE_SECONDS = 10          # total budget for the whole call, enforced here
+READ_TIMEOUT_SECONDS = 4       # per attempt; two attempts plus backoff stay inside the deadline
 MAX_WORDS = 120
 ACCEPTED_STOP_REASONS = {"end_turn", "stop_sequence"}
 RETRYABLE_ERRORS = {"ThrottlingException", "ServiceUnavailableException", "InternalServerException",
@@ -75,8 +75,9 @@ These metrics describe what changed and do not prove a cause.",
 def bedrock_client():
     session = boto3.Session(profile_name=config.AWS_PROFILE or None, region_name=config.AWS_REGION)
     return session.client("bedrock-runtime", config=Config(
-        connect_timeout=3, read_timeout=READ_TIMEOUT_SECONDS,
-        retries={"max_attempts": 1, "mode": "standard"}))  # retries are handled here, against a deadline
+        connect_timeout=2, read_timeout=READ_TIMEOUT_SECONDS,
+        # total_max_attempts=1 means exactly one SDK attempt: this module owns retries and the deadline.
+        retries={"total_max_attempts": 1, "mode": "standard"}))
 
 
 def sanitize(text):
@@ -156,9 +157,49 @@ def validate(answer_text, packet):
         checked.append({"metric_id": metric_id, "value": metric["value"], "unit": metric["unit"],
                         "direction": metric["direction"], "label": metric["label"], "scope": metric["scope"]})
 
-    structured = {"summary": summary.strip(), "claims": checked,
-                  "investigate": [str(item) for item in investigate][:4]}
+    investigate_text = [str(item) for item in investigate][:4]
+    reasons += _prose_disagreements(summary, investigate_text, checked, metrics)
+    structured = {"summary": summary.strip(), "claims": checked, "investigate": investigate_text}
     return structured, reasons
+
+
+RISE_WORDS = ("rose", "rise", "risen", "increase", "increased", "increasing", "grew", "growth", "up ", "higher",
+              "improved", "gained")
+FALL_WORDS = ("fell", "fall", "fallen", "decrease", "decreased", "decreasing", "declined", "decline", "dropped",
+              "drop", "down ", "lower", "reduced", "worsened")
+FLAT_WORDS = ("held steady", "stayed flat", "stayed the same", "remained steady", "unchanged", "remained the same",
+              "held flat", "flat")
+
+
+def _subject_words(metric_id):
+    """Words that identify the metric a sentence is about, e.g. 'sales.change_pct' -> ('sales',)."""
+    stem = metric_id.split(".")[-2] if metric_id.count(".") > 1 else metric_id.split(".")[0]
+    return tuple(word for word in stem.replace("_", " ").split() if len(word) > 3)
+
+
+def _prose_disagreements(summary, investigate, claims, metrics):
+    """Reject prose that contradicts a validated claim, or numbers that no claim supports."""
+    reasons = []
+    for sentence in re.split(r"[.;]", summary.lower()):
+        for claim in claims:
+            if claim["direction"] is None:
+                continue
+            subject = _subject_words(claim["metric_id"])
+            if not subject or not all(word in sentence for word in subject):
+                continue
+            said_up = any(word in sentence for word in RISE_WORDS)
+            said_down = any(word in sentence for word in FALL_WORDS)
+            said_flat = any(word in sentence for word in FLAT_WORDS)
+            direction = claim["direction"]
+            if (direction == "increase" and said_down and not said_up) or                (direction == "decrease" and said_up and not said_down) or                (direction == "flat" and (said_up or said_down) and not said_flat):
+                reasons.append(f"summary describes {claim['metric_id']} as the opposite of its {direction}")
+    supported = {round(float(metric["value"]), 2) for metric in metrics.values() if metric["value"] is not None}
+    supported |= {round(-value, 2) for value in supported}
+    for token in re.findall(r"-?\d+(?:\.\d+)?", " ".join(investigate)):
+        value = round(float(token), 2)
+        if not any(abs(value - candidate) <= 0.05 for candidate in supported):
+            reasons.append(f"investigation text used a number that is not in the packet: {value}")
+    return reasons
 
 
 def fallback_answer(packet):
@@ -207,19 +248,30 @@ def as_text(structured):
                                   f"Worth investigating: {investigate}." if investigate else ""]))
 
 
-def _call_bedrock(client, packet, model_id):
-    """One call with a deadline and a single retry for transient errors only."""
-    deadline = time.monotonic() + DEADLINE_SECONDS
+class DeadlineExceeded(Exception):
+    """The answer did not arrive inside the analyst's total budget."""
+
+
+def _call_bedrock(client, packet, model_id, deadline=None):
+    """One call inside a total deadline, with a single retry for transient errors only."""
+    deadline = deadline if deadline is not None else time.monotonic() + DEADLINE_SECONDS
     attempt = 0
     while True:
         attempt += 1
+        if time.monotonic() >= deadline:
+            raise DeadlineExceeded(f"no answer within {DEADLINE_SECONDS}s")
         try:
-            return client.converse(
+            response = client.converse(
                 modelId=model_id,
                 system=[{"text": SYSTEM_PROMPT}],
                 messages=[{"role": "user", "content": [{"text": json.dumps(packet, default=str)}]}],
                 inferenceConfig={"maxTokens": 600, "temperature": 0},
             )
+            if time.monotonic() > deadline:   # arrived too late to use
+                raise DeadlineExceeded(f"answer arrived after the {DEADLINE_SECONDS}s deadline")
+            return response
+        except DeadlineExceeded:
+            raise
         except Exception as exc:
             code = exc.response["Error"]["Code"] if isinstance(exc, ClientError) else type(exc).__name__
             transient = code in RETRYABLE_ERRORS or "Timeout" in code or "timeout" in str(exc).lower()
@@ -241,10 +293,10 @@ def ask(conn, question_id, dealer_id=None, client=None, now=None, model_id=None)
                               "investigate": []}, "answer_source": "insufficient_data"}
         return _log(conn, result, dealer_id)
 
-    client = client or bedrock_client()
-    started = time.perf_counter()
+    started, started_monotonic = time.perf_counter(), time.monotonic()
     try:
-        response = _call_bedrock(client, packet, model_id)
+        client = client or bedrock_client()   # inside the guard: a bad profile must fall back, not crash
+        response = _call_bedrock(client, packet, model_id, deadline=started_monotonic + DEADLINE_SECONDS)
         result["latency_ms"] = round((time.perf_counter() - started) * 1000)
         result["stop_reason"] = response.get("stopReason")
         result["usage"] = response.get("usage")

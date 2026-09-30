@@ -64,6 +64,19 @@ def is_stale(conn, today=None):
     return latest.date() < today - timedelta(days=1)
 
 
+def ensure_fresh(conn, today=None):
+    """Regenerate the demo data if it has aged out of the current comparison period.
+
+    Cheap enough to call on every request: one indexed max() until it actually needs to reseed.
+    """
+    if not is_stale(conn, today):
+        return False
+    from backend import correlation
+    seed_all(conn, today)
+    correlation.rebuild(conn)
+    return True
+
+
 def seed_all(conn, today=None, seed=SEED):
     today = today or datetime.now(timezone.utc).date()
     (start_a, end_a), (start_b, end_b) = period_bounds(today)

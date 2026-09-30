@@ -349,7 +349,9 @@ def test_every_call_is_logged_with_model_versions_and_tokens(seeded):
     packet = packets.build(seeded, "q2_test_drives_without_sales", now=NOW)
     seeded.execute("DELETE FROM analyst_log")
     ask(seeded, "q2_test_drives_without_sales",
-        StubBedrock(answer=answer(claims=[claim(packet, "larkspur_motors.probable_test_drives.change_pct")])))
+        StubBedrock(answer=answer(summary="Probable test drives rose at one dealership while its sales stayed flat. "
+                                          "These metrics do not prove a cause.",
+                                  claims=[claim(packet, "larkspur_motors.probable_test_drives.change_pct")])))
 
     row = seeded.execute("SELECT * FROM analyst_log ORDER BY id DESC LIMIT 1").fetchone()
     assert row["question_id"] == "q2_test_drives_without_sales"

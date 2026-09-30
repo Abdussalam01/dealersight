@@ -20,9 +20,7 @@ async def lifespan(app):
     with db.connect() as conn:
         db.init_schema(conn)
         ingest.current_session(conn)
-        if seed.is_stale(conn):   # first run, or the demo data has aged out of the current period
-            seed.seed_all(conn)
-            correlation.rebuild(conn)
+        seed.ensure_fresh(conn)   # first run, or the demo data has aged out of the current period
     if os.getenv("DISABLE_POLLER") != "1":
         poller.start()
     yield
@@ -34,6 +32,7 @@ app = FastAPI(title="DealerSight", lifespan=lifespan)
 
 def get_conn():
     with db.connect() as conn:
+        seed.ensure_fresh(conn)   # demo data is generated relative to today; keep it current
         yield conn
 
 

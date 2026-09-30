@@ -1,5 +1,6 @@
 """Regressions for the September 29 code review (CR-xx findings)."""
 
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -118,3 +119,129 @@ def test_the_analyst_states_its_scope_for_the_promotion_question(seeded):
 
     assert packet["scope"]
     assert text
+
+
+# --- CR-05: AWS setup failures must fall back, not escape --------------------------
+
+def test_a_bad_aws_profile_falls_back_and_is_logged(seeded, monkeypatch):
+    from botocore.exceptions import ProfileNotFound
+    monkeypatch.setattr(analyst, "bedrock_client",
+                        lambda: (_ for _ in ()).throw(ProfileNotFound(profile="missing")))
+
+    result = analyst.ask(seeded, "q1_conversion_decline", now=NOW, model_id="test-model")
+
+    assert result["answer_source"] == "fallback_unavailable"
+    assert "ProfileNotFound" in result["error"]
+    assert result["answer"]["claims"]          # a usable deterministic answer, not a crash
+    logged = seeded.execute("SELECT error, answer_source FROM analyst_log ORDER BY id DESC LIMIT 1").fetchone()
+    assert logged["answer_source"] == "fallback_unavailable" and "ProfileNotFound" in logged["error"]
+
+
+# --- CR-04: the prose must agree with the validated claims -------------------------
+
+def _answer(summary, claims, investigate=("lead follow-up time",)):
+    return {"summary": summary, "claims": list(claims), "investigate": list(investigate)}
+
+
+def _claim(packet, metric_id):
+    metric = packet["metrics"][metric_id]
+    return {"metric_id": metric_id, "value": metric["value"], "unit": metric["unit"],
+            "direction": metric["direction"]}
+
+
+def test_summary_that_contradicts_its_claim_is_rejected(seeded):
+    dealer = dealer_named(seeded, "Brookfield")
+    packet = packets.build(seeded, "q1_conversion_decline", dealer["id"], now=NOW)
+    assert packet["metrics"]["sales.change_pct"]["direction"] == "decrease"
+
+    wrong = _answer("Sales increased while probable test drives held steady. These metrics do not prove a cause.",
+                    [_claim(packet, "sales.change_pct")])
+    right = _answer("Sales fell while probable test drives held steady. These metrics do not prove a cause.",
+                    [_claim(packet, "sales.change_pct")])
+
+    assert any("opposite" in reason for reason in analyst.validate(json.dumps(wrong), packet)[1])
+    assert analyst.validate(json.dumps(right), packet)[1] == []
+
+
+def test_invented_numbers_in_investigation_text_are_rejected(seeded):
+    packet = packets.build(seeded, "q1_conversion_decline", now=NOW)
+    bad = _answer("Sales conversion held steady. These metrics do not prove a cause.",
+                  [_claim(packet, "sales.change_pct")],
+                  investigate=["Check why exactly 999 customers left"])
+
+    reasons = analyst.validate(json.dumps(bad), packet)[1]
+
+    assert any("not in the packet: 999" in reason for reason in reasons)
+
+
+# --- CR-11: missing denominators must not become numbers --------------------------
+
+def test_question_one_abstains_when_either_period_has_no_sessions(seeded):
+    dealer = dealer_named(seeded, "Vantage")
+    _, period = funnel.periods(NOW)
+    seeded.execute("""DELETE FROM derived_event WHERE dealer_id = %s AND type = 'probable_test_drive'
+                      AND started_at >= %s""", (dealer["id"], period[0]))
+    try:
+        packet = packets.build(seeded, "q1_conversion_decline", dealer["id"], now=NOW)
+        assert "recent period" in packet["insufficient_data"]
+    finally:
+        correlation.rebuild(seeded)
+
+
+def test_promotion_change_is_undefined_when_a_period_has_no_sales(seeded):
+    promotion = seeded.execute("SELECT * FROM promotion ORDER BY starts_at DESC LIMIT 1").fetchone()
+    seeded.execute("DELETE FROM sale WHERE occurred_at >= %s AND occurred_at < %s",
+                   (promotion["starts_at"], promotion["ends_at"]))
+    try:
+        comparison = funnel.promotion_comparison(seeded)
+        assert comparison["during"]["rates"]["finance_penetration"] is None
+        assert comparison["finance_penetration_change_pts"] is None       # not a fabricated -59.4
+        assert comparison["finance_penetration_unavailable_reason"]
+        assert packets.build(seeded, "q3_promotion_performance", now=NOW)["insufficient_data"]
+    finally:
+        seed.seed_all(seeded, today=SEED_DAY)
+        correlation.rebuild(seeded)
+
+
+# --- CR-13: the stated deadline is enforced ---------------------------------------
+
+def test_a_late_answer_is_rejected_by_the_deadline(seeded, monkeypatch):
+    import time
+
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(analyst.time, "monotonic", lambda: clock["now"])
+
+    class SlowBedrock:
+        def converse(self, **kwargs):
+            clock["now"] += analyst.DEADLINE_SECONDS + 1     # answer arrives after the budget
+            return {"output": {"message": {"content": [{"text": "{}"}]}}, "stopReason": "end_turn"}
+
+    result = analyst.ask(seeded, "q1_conversion_decline", client=SlowBedrock(), now=NOW, model_id="test-model")
+
+    assert result["answer_source"] == "fallback_unavailable"
+    assert "deadline" in result["error"].lower()
+
+
+def test_the_sdk_does_not_add_its_own_retries(seeded):
+    client = analyst.bedrock_client()
+    assert client.meta.config.retries["total_max_attempts"] == 1
+
+
+# --- CR-12: compared periods must cover equal elapsed time ------------------------
+
+def test_comparison_periods_have_equal_coverage(seeded):
+    period_a, period_b = funnel.periods(NOW)
+    assert funnel.coverage_hours(period_a) == funnel.coverage_hours(period_b)
+    assert period_a[1] == period_b[0]
+
+    comparison = funnel.compare(seeded, dealer_named(seeded, "Cedar")["id"], period_a, period_b)
+    assert comparison["equal_coverage"] is True
+    assert comparison["period_b"]["per_day"]["visits"] > 0
+
+
+def test_demo_data_is_refreshed_when_it_ages(seeded):
+    """ensure_fresh regenerates without needing a server restart."""
+    assert seed.ensure_fresh(seeded, today=SEED_DAY) is False
+    assert seed.ensure_fresh(seeded, today=SEED_DAY + timedelta(days=4)) is True
+    seed.seed_all(seeded, today=SEED_DAY)
+    correlation.rebuild(seeded)

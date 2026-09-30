@@ -121,9 +121,13 @@ def _q1(conn, dealer_id, period_a, period_b):
     if not a["visits"] or not b["visits"]:
         return _insufficient(question_id, "no visits recorded in one of the periods",
                              dealer=dealer["name"], period_a=_period(period_a), period_b=_period(period_b))
-    if not a["probable_test_drives"]:
-        return _insufficient(question_id, "no probable test-drive sessions in the earlier period, so conversion "
-                                          "cannot be compared", dealer=dealer["name"])
+    for label, period in (("earlier", a), ("recent", b)):
+        if not period["probable_test_drives"]:
+            return _insufficient(question_id, f"no probable test-drive sessions in the {label} period, so conversion "
+                                              "cannot be compared", dealer=dealer["name"])
+        if period["rates"]["sales_conversion"] is None:
+            return _insufficient(question_id, f"sales conversion is undefined in the {label} period",
+                                 dealer=dealer["name"])
 
     earlier = f"{dealer['name']}, {_period(period_a)['start']} to {_period(period_a)['end']}"
     recent = f"{dealer['name']}, {_period(period_b)['start']} to {_period(period_b)['end']}"

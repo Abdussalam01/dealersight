@@ -256,7 +256,10 @@ async function askAnalyst(questionId) {
   analystBusy = questionId; analystResult = null; refresh();
   try {
     analystResult = await post("/api/analyst/ask", { question_id: questionId, dealer_id: dealerId });
-  } catch (e) { analystResult = { answer: String(e), answer_source: "error", packet: {} }; }
+  } catch (e) {
+    analystResult = { answer: { summary: `The analyst request failed: ${String(e)}`, claims: [], investigate: [] },
+                      answer_source: "error", packet: {} };
+  }
   analystBusy = null; refresh();
 }
 
