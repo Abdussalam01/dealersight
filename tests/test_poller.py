@@ -39,17 +39,42 @@ def test_repeated_polls_ingest_each_event_once(conn, demo_dealer):
     assert metrics.visit_count(conn) == 2
 
 
-def test_later_polls_stop_at_first_known_event(conn, demo_dealer):
+def test_later_polls_stop_at_the_overlap_cutoff(conn, demo_dealer):
+    """Rescanning is bounded: pages older than the overlap window are not fetched again."""
     now = ingest.utcnow()
-    ingest.start_session(conn, now=now - timedelta(hours=2))
+    ingest.start_session(conn, now=now - timedelta(hours=4))
     ingest.ensure_device(conn, RING_DEVICE, "Playground Device", mode="demo")
-    pages = [[history_event(f"e{p}{i}", now - timedelta(minutes=p * 10 + i)) for i in range(3)] for p in range(3)]
+    # page 0 is inside the overlap window, pages 1 and 2 are well outside it
+    pages = [[history_event(f"e0{i}", now - timedelta(minutes=i)) for i in range(3)],
+             [history_event(f"e1{i}", now - timedelta(minutes=90 + i)) for i in range(3)],
+             [history_event(f"e2{i}", now - timedelta(minutes=180 + i)) for i in range(3)]]
     client = FakeRingClient(pages)
     poller = RingPoller(client=client)
 
-    poller.poll_once(conn)  # initial sync walks all pages
-    assert client.page_requests == 3
+    poller.poll_once(conn)                       # initial sync walks back to the cutoff
+    assert poller.status["scan_complete"] is True
 
     client.page_requests = 0
-    poller.poll_once(conn)  # first event is already known: one page, then stop
-    assert client.page_requests == 1
+    poller.poll_once(conn)                       # later poll only rescans the overlap window
+    assert client.page_requests <= 2
+
+
+def test_an_event_that_appears_late_is_still_ingested(conn, demo_dealer):
+    """CR-07: a known event must not stop the scan, or an entry visible late is lost forever."""
+    now = ingest.utcnow()
+    ingest.start_session(conn, now=now - timedelta(hours=2))
+    device = ingest.ensure_device(conn, RING_DEVICE, "Playground Device", mode="demo")
+    ingest.arm(conn, device, "entrance", now=now - timedelta(minutes=20), minutes=30)
+    newer = history_event("newer", now - timedelta(minutes=2))
+    later_arrival = history_event("older-but-late", now - timedelta(minutes=10))
+
+    client = FakeRingClient([[newer]])
+    poller = RingPoller(client=client)
+    poller.poll_once(conn)
+    assert metrics.visit_count(conn) == 1
+
+    client.pages = [[newer, later_arrival]]      # Ring now shows an older event it had not returned
+    poller.poll_once(conn)
+
+    assert metrics.visit_count(conn) == 2
+    assert conn.execute("SELECT count(*) AS n FROM raw_event").fetchone()["n"] == 2

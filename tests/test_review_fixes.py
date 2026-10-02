@@ -245,3 +245,80 @@ def test_demo_data_is_refreshed_when_it_ages(seeded):
     assert seed.ensure_fresh(seeded, today=SEED_DAY + timedelta(days=4)) is True
     seed.seed_all(seeded, today=SEED_DAY)
     correlation.rebuild(seeded)
+
+
+# --- CR-08: a replayed departure must not pair with a live return -----------------
+
+def test_replay_and_live_lot_events_do_not_pair(seeded):
+    """CR-08: provenance is part of the matching key, so sources cannot be mixed."""
+    demo = seeded.execute("SELECT * FROM dealer WHERE is_demo").fetchone()
+    device = ingest.ensure_device(seeded, "ava1.ring.device.MIX", "Mixed camera", mode="demo")
+    seeded.execute("UPDATE device SET dealer_id = %s WHERE id = %s", (demo["id"], device))
+    ingest.start_session(seeded, now=NOW - timedelta(hours=1))
+
+    ingest.arm(seeded, device, "lot_departure", now=NOW - timedelta(minutes=10), minutes=5)
+    ingest.ingest(seeded, history_event("mix-dep", NOW - timedelta(minutes=9), device="ava1.ring.device.MIX"),
+                  source="ring_replay", now=NOW)
+    ingest.arm(seeded, device, "lot_return", now=NOW - timedelta(minutes=6), minutes=5)
+    ingest.ingest(seeded, history_event("mix-ret", NOW - timedelta(minutes=5), device="ava1.ring.device.MIX"),
+                  source="ring_live", now=NOW)
+    correlation.rebuild(seeded, now=NOW)
+
+    sessions = seeded.execute(
+        """SELECT source FROM derived_event WHERE type = 'probable_test_drive' AND dealer_id = %s
+           AND started_at >= %s""", (demo["id"], NOW - timedelta(hours=1))).fetchall()
+    try:
+        assert sessions == []          # different provenance: no pairing, and nothing labelled live
+    finally:
+        seed.seed_all(seeded, today=SEED_DAY)   # clears derived rows that reference these events
+        seeded.execute("DELETE FROM raw_event WHERE ring_event_id IN ('mix-dep', 'mix-ret')")
+        correlation.rebuild(seeded)
+
+
+# --- CR-10: only real camera activity may become a metric -------------------------
+
+def test_unexpected_event_types_are_stored_but_not_counted(seeded):
+    """CR-10: a doorbell press or an invented type must not become a visit."""
+    demo = seeded.execute("SELECT * FROM dealer WHERE is_demo").fetchone()
+    device = ingest.ensure_device(seeded, "ava1.ring.device.TYPES", "Type test camera", mode="production")
+    seeded.execute("UPDATE device SET dealer_id = %s WHERE id = %s", (demo["id"], device))
+    seeded.execute("""INSERT INTO device_assignment (device_id, camera_position_id, valid_from, zone_source)
+                      SELECT %s, id, %s, 'device_configuration' FROM camera_position WHERE code = 'entrance'""",
+                   (device, NOW - timedelta(days=1)))
+    ingest.start_session(seeded, now=NOW - timedelta(hours=1))
+
+    for index, event_type in enumerate(("ding", "sensor_opened", "button_press")):
+        payload = history_event(f"type-{index}", NOW - timedelta(minutes=30 - index),
+                                device="ava1.ring.device.TYPES")
+        payload["attributes"]["event_type"] = event_type
+        assert ingest.ingest(seeded, payload, now=NOW) == {"status": "rejected", "reason": "event_type_not_counted"}
+
+    motion = history_event("type-motion", NOW - timedelta(minutes=20), device="ava1.ring.device.TYPES")
+    motion["attributes"]["event_type"] = "motion"
+    assert ingest.ingest(seeded, motion, now=NOW)["status"] == "accepted"
+
+    seed.seed_all(seeded, today=SEED_DAY)
+    seeded.execute("DELETE FROM raw_event WHERE ring_event_id LIKE 'type-%%'")
+    correlation.rebuild(seeded)
+
+
+def test_an_event_that_ends_before_it_starts_is_rejected(seeded):
+    payload = history_event("backwards", NOW - timedelta(minutes=5))
+    payload["attributes"]["end"] = payload["attributes"]["start"] - 60_000
+
+    result = ingest.ingest(seeded, payload, now=NOW)
+
+    assert result == {"status": "invalid", "reason": "event ends before it starts"}
+
+
+# --- CR-09: a stale rebuild must not overwrite a newer one ------------------------
+
+def test_rebuild_reads_and_writes_under_one_lock(seeded):
+    """The snapshot is read inside the locked transaction, so a slow rebuild cannot
+    commit an older result on top of a newer one."""
+    import inspect
+    source = inspect.getsource(correlation.rebuild)
+
+    assert "pg_advisory_xact_lock" in source
+    assert source.index("pg_advisory_xact_lock") < source.index("_rebuild_locked")
+    assert "pg_advisory_xact_lock" in inspect.getsource(seed.seed_all)   # reseed shares the lock

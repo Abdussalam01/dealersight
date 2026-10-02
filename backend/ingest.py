@@ -18,6 +18,15 @@ from psycopg.types.json import Jsonb
 from backend import config
 
 
+# Event types that count as camera activity, per device mode. The Ring Developer Playground
+# records its simulated triggers as live-view sessions (`on_demand`), which is why demo mode
+# accepts them; production counts motion only, never a live view or a doorbell press.
+COUNTED_EVENT_TYPES = {
+    "demo": {"on_demand", "motion", "motion_detected"},
+    "production": {"motion", "motion_detected"},
+}
+
+
 class InvalidEvent(ValueError):
     pass
 
@@ -48,6 +57,8 @@ def normalize_history_event(payload, now=None):
         raise InvalidEvent("empty event id or type")
     if normalized["started_at"] > now + timedelta(seconds=config.FUTURE_TOLERANCE_SECONDS):
         raise InvalidEvent("event starts in the future")
+    if normalized["ended_at"] and normalized["ended_at"] < normalized["started_at"]:
+        raise InvalidEvent("event ends before it starts")
     return normalized
 
 
@@ -135,6 +146,8 @@ def ingest(conn, payload, source="ring_live", now=None):
         reason = "before_watermark"
     elif device["mode"] == "production" and event["ring_event_type"] == "on_demand":
         reason = "live_view"
+    elif event["ring_event_type"] not in COUNTED_EVENT_TYPES.get(device["mode"], set()):
+        reason = "event_type_not_counted"
     elif not assignment:
         reason = "not_armed" if device["mode"] == "demo" else "unassigned"
     elif device["dealer_id"] is None:

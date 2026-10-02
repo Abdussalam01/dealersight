@@ -46,11 +46,25 @@ def _counted_events(conn, watermark):
     ).fetchall()
 
 
+REBUILD_LOCK = 4210
+
+
 def rebuild(conn, now=None, rules=None):
-    """Recompute derived events and test-drive candidates. Returns counts by type."""
+    """Recompute derived events and test-drive candidates. Returns counts by type.
+
+    The session, the raw events and the write all happen inside one transaction holding the
+    rebuild lock, so two rebuilds cannot read different snapshots and commit out of order
+    (an older result overwriting a newer one).
+    """
     now = now or ingest.utcnow()
     rules = rules or load_rules()
     version = rules["rule_version"]
+    with conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (REBUILD_LOCK,))
+        return _rebuild_locked(conn, now, rules, version)
+
+
+def _rebuild_locked(conn, now, rules, version):
     session = ingest.current_session(conn)
     cooldown = timedelta(seconds=rules["visit"]["dedup_cooldown_seconds"])
     min_engagement = timedelta(seconds=rules["engagement"]["min_duration_seconds"])
@@ -58,7 +72,9 @@ def rebuild(conn, now=None, rules=None):
 
     derived, candidates = [], []
     last_visit = {}   # device -> the visit that repeat activity collapses into
-    open_lots = {}    # dealer -> that dealership's open departures, oldest first
+    # (dealership, provenance) -> open departures, oldest first. Keeping provenance in the key
+    # stops a replayed departure from pairing with a live return and being labelled live.
+    open_lots = {}
 
     for event in _counted_events(conn, session["watermark"]):
         position = event["position"]
@@ -86,10 +102,10 @@ def rebuild(conn, now=None, rules=None):
                 "matched_event_id": None, "zone_id": event["zone_id"], "source": event["source"],
             }
             candidates.append(candidate)
-            open_lots.setdefault(event["dealer_id"], []).append(candidate)
+            open_lots.setdefault((event["dealer_id"], event["source"]), []).append(candidate)
 
         elif position == "lot_return":
-            waiting = open_lots.get(event["dealer_id"], [])
+            waiting = open_lots.get((event["dealer_id"], event["source"]), [])
             for candidate in waiting:
                 if candidate["status"] == "open" and candidate["expires_at"] < event["started_at"]:
                     candidate["status"] = "expired"
@@ -101,7 +117,7 @@ def rebuild(conn, now=None, rules=None):
                 drive["started_at"] = match["departed_at"]
                 drive["ended_at"] = event["started_at"]
                 derived.append(drive)
-            open_lots[event["dealer_id"]] = [c for c in waiting if c["status"] == "open"]
+            open_lots[(event["dealer_id"], event["source"])] = [c for c in waiting if c["status"] == "open"]
 
     for candidate in candidates:
         if candidate["status"] == "open" and candidate["expires_at"] < now:
@@ -119,8 +135,8 @@ def _derived(kind, event, source_ids, confidence, version):
 
 
 def _store(conn, derived, candidates, version):
-    with conn.transaction():
-        conn.execute("SELECT pg_advisory_xact_lock(4210)")  # one rebuild at a time (poller vs. API)
+    """Caller already holds the rebuild lock inside an open transaction."""
+    if True:
         conn.execute("DELETE FROM derived_event")
         conn.execute("DELETE FROM test_drive_candidate")
         cursor = conn.cursor()

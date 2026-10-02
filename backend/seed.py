@@ -83,6 +83,8 @@ def seed_all(conn, today=None, seed=SEED):
     rng = random.Random(seed)
 
     with conn.transaction():
+        from backend.correlation import REBUILD_LOCK
+        conn.execute("SELECT pg_advisory_xact_lock(%s)", (REBUILD_LOCK,))   # same lock as rebuild
         # Derived rows reference raw events, so clear them first; correlation.rebuild recreates them.
         conn.execute("DELETE FROM test_drive_candidate")
         conn.execute("DELETE FROM derived_event")
