@@ -68,7 +68,8 @@ made a rehearsable demo possible.
   camera to a position, clearly labelled in the UI. Several synthetic devices, or one synthetic
   multi-camera device exposing `component_ids`, would fix this.
 - **No webhook path.** The temporary token gives no documented way to configure or test webhook delivery
-  (FL-04), so the signature-verification code we wrote to spec is still unexercised. A Playground webhook
+  (FL-04), so we deliberately did not build a webhook handler we could never exercise: DealerSight
+  ingests through polling only. A Playground webhook
   tester that posts signed sample payloads to a developer-supplied URL would be valuable.
 - `on_demand` means a live-view session, so an application that requests media creates events that look
   like activity. Worth calling out in the Playground docs.
@@ -137,9 +138,12 @@ output across repeated runs.
   documented response-format option, or a note that fencing is common, would save that debugging.
 - **Instruction adherence varies in ways that matter for compliance.** Our prompt requires every answer to
   state that a correlation does not prove a cause. Nova Pro omitted that sentence in 2 of 12 answers
-  before we enforced it in code, and Nova Micro twice put a number in a field we required to be free of
-  digits. None of this is a defect in Bedrock, but it is a strong argument that the guarantees have to
-  live in the application, not the prompt.
+  before we enforced it in code; Nova Micro twice put a number in a field we required to be free of
+  digits; and Nova 2 Lite returned answers with no claims at all in half its runs. None of this is a
+  defect in Bedrock, but it is a strong argument that the guarantees have to live in the application,
+  not the prompt. Our comparison is reproducible: `scripts/benchmark_models.py` writes per-call results
+  to `docs/evidence/model-benchmark.json`, and the figure it reports is validator acceptance rather than
+  a judgement of how insightful the prose is.
 - Given no facts, models invent them: asked only to greet DealerSight, Nova Micro described it as
   providing "vehicle inspection and valuation services" (FL-07,
   `docs/evidence/FL-07_bedrock_tone_test.json`). That result shaped the entire design of our analyst.

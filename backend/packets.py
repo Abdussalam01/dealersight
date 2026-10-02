@@ -182,9 +182,10 @@ def _q2(conn, _dealer_id, period_a, period_b):
 
     rows.sort(key=lambda row: row["gap_points"], reverse=True)
     thresholds = correlation.load_rules()["patterns"]
+    # "without a corresponding increase in sales" covers flat sales and falling sales alike.
     flagged = [row["dealer"] for row in rows
                if row["probable_test_drives"]["change_pct"] >= thresholds["growth_pct"]
-               and abs(row["sales"]["change_pct"]) <= thresholds["stable_pct"]]
+               and row["sales"]["change_pct"] <= thresholds["stable_pct"]]
     metrics = {}
     origin = {"period_a": origins(funnel.funnel(conn, None, *period_a)),
               "period_b": origins(funnel.funnel(conn, None, *period_b))}
@@ -209,8 +210,8 @@ def _q2(conn, _dealer_id, period_a, period_b):
         "metrics": metrics,
         "event_origins": origin,
         "ranking_rule": "dealerships sorted by probable test-drive growth minus sales growth, computed in application code",
-        "threshold_rule": f"flagged when probable test drives rose at least {thresholds['growth_pct']}% "
-                          f"and sales stayed within +/-{thresholds['stable_pct']}%",
+        "threshold_rule": f"flagged when probable test drives rose at least {thresholds['growth_pct']}% while "
+                          f"sales did not rise by more than {thresholds['stable_pct']}% (flat or falling)",
         "dealers": rows,
         "dealers_matching_threshold": flagged,
     }

@@ -72,7 +72,7 @@ Evidence files live in `docs/evidence/` and are sanitized (no tokens, no device/
 - **Expected result:** A way to send Playground events to a test webhook URL.
 - **Actual result:** The temporary Playground token does not provide a documented path for configuring or testing webhook delivery.
 - **Severity:** Medium.
-- **Workaround:** Poll Event History, which the docs describe as the "API polling alternative". The webhook handler is built to spec for when a registered app is available.
+- **Workaround:** Poll Event History, which the docs describe as the "API polling alternative". DealerSight therefore has **no webhook handler**: ingestion is polling only (`backend/ring_poller.py`), and the webhook path is planned rather than implemented. We did not build signature verification we could not exercise.
 - **Suggestion:** A Playground webhook tester that sends signed sample `motion_detected` payloads to a developer-provided URL, or shows the exact payload that would have been sent.
 
 ## FL-05: History and webhook payloads describe the same event differently
@@ -118,12 +118,12 @@ Evidence files live in `docs/evidence/` and are sanitized (no tokens, no device/
 |---|---|
 | Date | 2026-09-21 |
 | Environment | Hackathon AWS credits request |
-| Status | Open. _Update when credits arrive._ |
+| Status | Resolved (approved 2026-09-27) |
 
 - **Task attempted:** Obtain AWS credits before using Bedrock.
 - **Steps taken:** Submitted the credits request.
 - **Expected result:** Confirmation or a status/ETA.
-- **Actual result:** No response yet at time of writing.
+- **Actual result:** No response for six days, then approved on 2026-09-27. No notification arrived; we only found out by checking the account.
 - **Severity:** Low. Not blocking.
 - **Workaround:** Pay-as-you-go with a billing alarm; Phase 0 Bedrock calls used ~30–60 tokens each.
 - **Suggestion:** Show request status and expected turnaround on the request page.

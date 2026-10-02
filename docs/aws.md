@@ -81,14 +81,20 @@ python scripts\bedrock_hello.py
 
 ## Model choice
 
-Measured over 24 benchmark calls per model against the three analyst questions (see
-`docs/product-feedback.md`):
+Measured by `scripts/benchmark_models.py`, which asks all three questions (including one whose premise the
+data does not support) several times per model and runs each answer through the same validator the
+application uses. Full per-call results, with the prompt and packet schema versions, are in
+`docs/evidence/model-benchmark.json`.
 
-| Model | Answers passing validation | Median latency |
+| Model | Answers accepted by the validator | Median latency |
 |---|---|---|
-| `amazon.nova-pro-v1:0` (in use) | 24/24 | ~1.1 s |
-| `amazon.nova-micro-v1:0` | 22/24 | ~1.0 s |
-| `us.amazon.nova-2-lite-v1:0` | 22/24 | ~1.1 s |
+| `amazon.nova-pro-v1:0` | 12/12 | ~2.0 s |
+| `amazon.nova-micro-v1:0` | 11/12 | ~0.8 s |
+| `us.amazon.nova-2-lite-v1:0` | 6/12 | ~1.1 s |
+
+This measures **validator acceptance**: the answer parsed, named real metric ids with the right values,
+units and directions, carried the required no-causation statement and did not contradict itself. It is not
+a judgement of how insightful the prose is; the sampled summaries in the evidence file support that.
 
 Nova Micro is a cheaper alternative and works: set `BEDROCK_MODEL_ID=amazon.nova-micro-v1:0`.
 

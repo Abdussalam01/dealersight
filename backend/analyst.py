@@ -169,6 +169,9 @@ FALL_WORDS = ("fell", "fall", "fallen", "decrease", "decreased", "decreasing", "
               "drop", "down ", "lower", "reduced", "worsened")
 FLAT_WORDS = ("held steady", "stayed flat", "stayed the same", "remained steady", "unchanged", "remained the same",
               "held flat", "flat")
+# Calling a very small movement "steady" is fair comment, so only material changes may not be
+# described as flat. Describing a change as the opposite direction is wrong at any size.
+MATERIAL_CHANGE = 1.0
 
 
 def _subject_words(metric_id):
@@ -191,8 +194,13 @@ def _prose_disagreements(summary, investigate, claims, metrics):
             said_down = any(word in sentence for word in FALL_WORDS)
             said_flat = any(word in sentence for word in FLAT_WORDS)
             direction = claim["direction"]
-            if (direction == "increase" and said_down and not said_up) or                (direction == "decrease" and said_up and not said_down) or                (direction == "flat" and (said_up or said_down) and not said_flat):
+            material = abs(claim["value"]) >= MATERIAL_CHANGE
+            opposite = (direction == "increase" and said_down and not said_up) or                        (direction == "decrease" and said_up and not said_down) or                        (direction == "flat" and (said_up or said_down) and not said_flat)
+            called_flat = material and direction in ("increase", "decrease") and said_flat                 and not (said_up or said_down)
+            if opposite:
                 reasons.append(f"summary describes {claim['metric_id']} as the opposite of its {direction}")
+            elif called_flat:
+                reasons.append(f"summary calls {claim['metric_id']} unchanged, but it moved by {claim['value']}")
     supported = {round(float(metric["value"]), 2) for metric in metrics.values() if metric["value"] is not None}
     supported |= {round(-value, 2) for value in supported}
     for token in re.findall(r"-?\d+(?:\.\d+)?", " ".join(investigate)):

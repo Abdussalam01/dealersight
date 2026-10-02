@@ -322,3 +322,28 @@ def test_rebuild_reads_and_writes_under_one_lock(seeded):
     assert "pg_advisory_xact_lock" in source
     assert source.index("pg_advisory_xact_lock") < source.index("_rebuild_locked")
     assert "pg_advisory_xact_lock" in inspect.getsource(seed.seed_all)   # reseed shares the lock
+
+
+def test_small_movements_may_be_described_as_steady(seeded):
+    """A sub-point change called "held steady" is fair comment, not a contradiction."""
+    packet = packets.build(seeded, "q1_conversion_decline", now=NOW)
+    small = next((metric_id for metric_id, metric in packet["metrics"].items()
+                  if metric["unit"] == "percentage_points" and metric["value"]
+                  and 0 < abs(metric["value"]) < analyst.MATERIAL_CHANGE), None)
+    if small is None:
+        pytest.skip("no sub-point movement in this dataset")
+
+    text = _answer("Sales conversion held steady. These metrics do not prove a cause.", [_claim(packet, small)])
+
+    assert analyst.validate(json.dumps(text), packet)[1] == []
+
+
+def test_a_material_change_cannot_be_called_unchanged(seeded):
+    dealer = dealer_named(seeded, "Brookfield")
+    packet = packets.build(seeded, "q1_conversion_decline", dealer["id"], now=NOW)
+    text = _answer("Sales held steady at this dealership. These metrics do not prove a cause.",
+                   [_claim(packet, "sales.change_pct")])          # a 30% fall
+
+    reasons = analyst.validate(json.dumps(text), packet)[1]
+
+    assert any("unchanged" in reason for reason in reasons)

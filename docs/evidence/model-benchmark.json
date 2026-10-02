@@ -1,0 +1,591 @@
+{
+ "generated_at": "2026-10-02T13:34:55.825038+00:00",
+ "runs_per_case": 3,
+ "prompt_version": "2026-09-23.1",
+ "packet_schema_version": "2026-09-23.1",
+ "measures": "validator acceptance, not semantic correctness",
+ "models": {
+  "amazon.nova-pro-v1:0": {
+   "unavailable": null,
+   "accepted": 12,
+   "attempted": 12,
+   "median_latency_ms": 2007.0,
+   "mean_output_tokens": 228,
+   "calls": [
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 2240,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 155,
+      "totalTokens": 4135
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion fell while probable test drives held steady, so fewer sessions converted. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1486,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 155,
+      "totalTokens": 4135
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion fell while probable test drives held steady, so fewer sessions converted. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1738,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 155,
+      "totalTokens": 4135
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion fell while probable test drives held steady, so fewer sessions converted. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1928,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 146,
+      "totalTokens": 4136
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion increased slightly while probable test drives decreased. These metrics do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 3065,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 242,
+      "totalTokens": 4232
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion increased slightly while visits, engagements, and probable test drives decreased. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1933,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 239,
+      "totalTokens": 4229
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion increased slightly while visits, engagements, and probable test drives decreased. These metrics do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 2183,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 257,
+      "totalTokens": 3746
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "No dealers had increased probable test-drive activity without a corresponding increase in sales. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 1541,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 257,
+      "totalTokens": 3746
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "No dealers had increased probable test-drive activity without a corresponding increase in sales. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 1923,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 257,
+      "totalTokens": 3746
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "No dealers had increased probable test-drive activity without a corresponding increase in sales. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 2974,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 289,
+      "totalTokens": 3789
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements fell slightly, probable test drives rose, but sales and finance deals both increased. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 3435,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 293,
+      "totalTokens": 3793
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements decreased slightly, while probable test drives and finance deals increased. Sales decreased. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 2081,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 288,
+      "totalTokens": 3788
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements decreased slightly, while probable test drives and finance deals increased. Sales decreased. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    }
+   ]
+  },
+  "amazon.nova-micro-v1:0": {
+   "unavailable": null,
+   "accepted": 11,
+   "attempted": 12,
+   "median_latency_ms": 826.5,
+   "mean_output_tokens": 201,
+   "calls": [
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 660,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 99,
+      "totalTokens": 4079
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Brookfield Auto Group saw a drop in sales conversion while probable test drive rates held steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 1
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 645,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 132,
+      "totalTokens": 4112
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion fell while probable test drives remained steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 892,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3980,
+      "outputTokens": 212,
+      "totalTokens": 4192
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion fell while probable test drives remained steady, but visits and engagements dropped. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 747,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 169,
+      "totalTokens": 4159
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion rose while probable test drives and visits decreased. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 711,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 173,
+      "totalTokens": 4163
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales conversion rose while visits and engagements fell, and probable test drives decreased. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1240,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3990,
+      "outputTokens": 170,
+      "totalTokens": 4160
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales and probable test drives fell while engagement rates held steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 623,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 93,
+      "totalTokens": 3582
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Probable test-drive activity decreased while sales fell at three dealerships. These metrics describe what changed and do not prove a cause.",
+     "claims": 1
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 1195,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 408,
+      "totalTokens": 3897
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Probable test-drive activity decreased while sales fell at three dealerships. These metrics describe what changed and do not prove a cause.",
+     "claims": 8
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 785,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3489,
+      "outputTokens": 236,
+      "totalTokens": 3725
+     },
+     "accepted": false,
+     "reasons": [
+      "summary describes brookfield_auto_group.sales.change_pct as the opposite of its decrease",
+      "summary describes larkspur_motors.sales.change_pct as the opposite of its decrease"
+     ],
+     "summary": "Brookfield Auto Group and Larkspur Motors had increased probable test-drive activity without a corresponding increase in sales. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 932,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 239,
+      "totalTokens": 3739
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements decreased while probable test drives and finance deals increased during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 1120,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 240,
+      "totalTokens": 3740
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements decreased while probable test drives and finance deals increased during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 868,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3500,
+      "outputTokens": 240,
+      "totalTokens": 3740
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Visits and engagements decreased while probable test drives and finance deals increased during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 5
+    }
+   ]
+  },
+  "us.amazon.nova-2-lite-v1:0": {
+   "unavailable": null,
+   "accepted": 6,
+   "attempted": 12,
+   "median_latency_ms": 1143.5,
+   "mean_output_tokens": 160,
+   "calls": [
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 999,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3369,
+      "outputTokens": 152,
+      "totalTokens": 3521
+     },
+     "accepted": false,
+     "reasons": [
+      "summary describes probable_test_drive_rate.change_points as the opposite of its increase"
+     ],
+     "summary": "Sales conversion fell while probable test-drive rates held steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1011,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3369,
+      "outputTokens": 150,
+      "totalTokens": 3519
+     },
+     "accepted": false,
+     "reasons": [
+      "summary describes probable_test_drive_rate.change_points as the opposite of its increase"
+     ],
+     "summary": "Sales conversion fell while probable test-drive rates held steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "declining dealership",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 891,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3369,
+      "outputTokens": 152,
+      "totalTokens": 3521
+     },
+     "accepted": false,
+     "reasons": [
+      "summary describes probable_test_drive_rate.change_points as the opposite of its increase"
+     ],
+     "summary": "Sales conversion fell while probable test-drive rates held steady. These metrics describe what changed and do not prove a cause.",
+     "claims": 2
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1158,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3371,
+      "outputTokens": 192,
+      "totalTokens": 3563
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales fell while probable test-drive sessions also fell, but the sales conversion rate rose slightly. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1424,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3371,
+      "outputTokens": 200,
+      "totalTokens": 3571
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales fell while probable test-drive rates rose, and finance penetration climbed sharply. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "steady dealership (question assumes a decline)",
+     "question_id": "q1_conversion_decline",
+     "latency_ms": 1129,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3371,
+      "outputTokens": 200,
+      "totalTokens": 3571
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Sales fell while probable test-drive rates rose, and finance penetration climbed sharply. These metrics describe what changed and do not prove a cause.",
+     "claims": 3
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 783,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3107,
+      "outputTokens": 70,
+      "totalTokens": 3177
+     },
+     "accepted": false,
+     "reasons": [
+      "missing claims"
+     ],
+     "summary": "None of the dealers had increased probable test-drive activity without a corresponding increase in sales. These metrics describe what changed and do not prove a cause.",
+     "claims": 0
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 684,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3107,
+      "outputTokens": 75,
+      "totalTokens": 3182
+     },
+     "accepted": false,
+     "reasons": [
+      "missing claims"
+     ],
+     "summary": "None of the dealers had increased probable test-drive activity without a corresponding increase in sales during the period. These metrics describe what changed and do not prove a cause.",
+     "claims": 0
+    },
+    {
+     "case": "network ranking",
+     "question_id": "q2_test_drives_without_sales",
+     "latency_ms": 1193,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3107,
+      "outputTokens": 75,
+      "totalTokens": 3182
+     },
+     "accepted": false,
+     "reasons": [
+      "missing claims"
+     ],
+     "summary": "None of the dealers had increased probable test-drive activity without a corresponding increase in sales during the period. These metrics describe what changed and do not prove a cause.",
+     "claims": 0
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 1190,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3023,
+      "outputTokens": 217,
+      "totalTokens": 3240
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Probable test drives rose while sales fell, and finance deals increased with higher finance penetration during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 1317,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3023,
+      "outputTokens": 217,
+      "totalTokens": 3240
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Probable test drives rose while sales fell, and finance deals increased with higher finance penetration during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    },
+    {
+     "case": "promotion",
+     "question_id": "q3_promotion_performance",
+     "latency_ms": 1211,
+     "stop_reason": "end_turn",
+     "usage": {
+      "inputTokens": 3023,
+      "outputTokens": 217,
+      "totalTokens": 3240
+     },
+     "accepted": true,
+     "reasons": [],
+     "summary": "Probable test drives rose while sales fell, and finance deals increased with higher finance penetration during the promotion. These metrics describe what changed and do not prove a cause.",
+     "claims": 4
+    }
+   ]
+  }
+ }
+}

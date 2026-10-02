@@ -2,7 +2,14 @@
 
 DealerSight turns anonymous Ring camera events into a physical dealership funnel (visits, vehicle-area engagements, probable test-drive sessions) and connects it to clearly labeled simulated sales and financing data.
 
-> Status: early development (Phase 3). Full documentation comes later; this is the quick start.
+> Status: Phases 0-4 complete (Ring ingestion, three zone rules, five-stage funnel with three views,
+> grounded Bedrock analyst). Phase 5 (presentation polish and submission materials) is in progress.
+
+**Implemented:** Ring Partner API discovery and Event History polling, idempotent ingestion with timed
+camera placements, the three zone rules, the connected funnel with per-stage provenance, dealer /
+manufacturer / captive-finance views, and the Bedrock analyst with claim validation and deterministic
+fallbacks. **Not implemented:** webhook ingestion (the Ring Developer Playground provides no way to test
+it), so events are polled.
 
 ## Quick start (local)
 

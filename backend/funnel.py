@@ -225,9 +225,9 @@ def patterns(conn, period_a, period_b):
             found.append({"dealer": dealer["name"], "pattern": "sales_fell_while_test_drives_held",
                           "description": f"Probable test drives held steady ({drives:+.1f}%) while sales fell "
                                          f"{abs(sales):.1f}%.", **facts})
-        elif drives >= thresholds["growth_pct"] and abs(sales) <= thresholds["stable_pct"]:
+        elif drives >= thresholds["growth_pct"] and sales <= thresholds["stable_pct"]:
             found.append({"dealer": dealer["name"], "pattern": "test_drives_grew_without_sales",
-                          "description": f"Probable test drives rose {drives:.1f}% while sales stayed flat "
+                          "description": f"Probable test drives rose {drives:.1f}% while sales did not follow "
                                          f"({sales:+.1f}%).", **facts})
     promotion = promotion_comparison(conn)
     if promotion and promotion["finance_penetration_change_pts"] is not None:
