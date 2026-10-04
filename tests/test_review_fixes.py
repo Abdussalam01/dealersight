@@ -1,6 +1,7 @@
 """Regressions for the September 29 code review (CR-xx findings)."""
 
 import json
+import re
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -347,3 +348,35 @@ def test_a_material_change_cannot_be_called_unchanged(seeded):
     reasons = analyst.validate(json.dumps(text), packet)[1]
 
     assert any("unchanged" in reason for reason in reasons)
+
+
+def test_audit_history_lists_ring_originated_events_first(conn):
+    """The Ring events audit history is about what Ring sent: seeded baseline events dated
+    later must not push live Ring events out of the window the judge sees."""
+    rows = ingest.recent_events(conn, limit=20)
+    sources = [r["source"] for r in rows]
+    ring_rows = [i for i, s in enumerate(sources) if s in ("ring_live", "ring_replay")]
+    other_rows = [i for i, s in enumerate(sources) if s not in ("ring_live", "ring_replay")]
+    if ring_rows and other_rows:
+        assert max(ring_rows) < min(other_rows), f"Ring events not listed first: {sources}"
+    for group in (ring_rows, other_rows):
+        times = [rows[i]["started_at"] for i in group]
+        assert times == sorted(times, reverse=True), "within a group, events must run newest first"
+
+
+def test_every_rejection_reason_has_plain_english_wording():
+    """The audit history prints a reason to a judge, so no reason may reach the screen as a
+    raw enum. Fails if ingest grows a reason the frontend cannot word."""
+    from pathlib import Path
+    ingest_src = Path(__file__).resolve().parents[1] / "backend" / "ingest.py"
+    page = Path(__file__).resolve().parents[1] / "frontend" / "index.html"
+
+    emitted = set(re.findall(r'reason = "([a-z_]+)"', ingest_src.read_text(encoding="utf-8")))
+    emitted |= set(re.findall(r'reason = "([a-z_]+)" if', ingest_src.read_text(encoding="utf-8")))
+    emitted |= set(re.findall(r'else "([a-z_]+)"', ingest_src.read_text(encoding="utf-8")))
+
+    block = re.search(r"const REJECT_REASON = \{(.*?)\};", page.read_text(encoding="utf-8"), re.S).group(1)
+    worded = set(re.findall(r"^\s*([a-z_]+):", block, re.M))
+
+    assert emitted, "no rejection reasons found in ingest.py"
+    assert emitted <= worded, f"rejection reasons with no wording: {sorted(emitted - worded)}"

@@ -3,369 +3,929 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DealerSight</title>
+<title>DealerSight — physical funnel inspection</title>
 <style>
-  :root { --line: #e3e3e6; --muted: #5a5a63; --ring: #1d4ed8; }
-  body { font-family: system-ui, sans-serif; margin: 20px; color: #17171b; background: #f7f7f9; }
-  h1 { margin: 0; font-size: 26px; }
-  h3 { margin: 18px 0 8px; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; }
-  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
-  .grow { flex: 1; min-width: 300px; }
-  button { font-size: 14px; padding: 7px 11px; margin: 3px 3px 0 0; border: 1px solid #9a9aa2; border-radius: 6px; background: #fff; cursor: pointer; }
-  button.active { background: var(--ring); color: #fff; border-color: var(--ring); }
-  .tabs button { font-weight: 600; }
-  table { border-collapse: collapse; width: 100%; background: #fff; font-size: 13.5px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #efeff1; }
-  th { color: var(--muted); font-weight: 600; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11.5px; font-weight: 600; }
-  .ring { background: #dbeafe; color: #1e3a8a; }
-  .sim { background: #f1f5f9; color: #334155; }
-  .inf { background: #fef3c7; color: #78350f; }
-  .replay { background: #ede9fe; color: #4c1d95; }
-  .ok { background: #dcfce7; color: #14532d; }
-  .no { background: #f3f4f6; color: #374151; }
-  .err { color: #b91c1c; }
-  .up { color: #15803d; } .down { color: #b91c1c; }
-  .stage { display: flex; align-items: baseline; gap: 10px; padding: 8px 6px; border-bottom: 1px solid #efeff1; cursor: pointer; }
-  .stage:hover { background: #f8fafc; }
-  .stage .val { font-size: 26px; font-weight: 700; min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-  .arrow { padding: 2px 0 2px 84px; font-size: 12.5px; color: var(--muted); }
-  .bar { display: inline-block; height: 10px; background: var(--ring); vertical-align: middle; border-radius: 2px; }
-  .hidden { display: none; }
+  /* ------------------------------------------------------------------
+     DealerSight: the dealership's own service-drive inspection report.
+     Every figure is an inspected line: a measured value, what measured
+     it, and how far it may be trusted.
+
+     Two colour channels, kept deliberately separate:
+       SOURCE  (--ring / --inferred / --sim / --ai) says how a figure was
+               obtained. It appears only inside a plate that names a
+               source, and never says whether anything is good or broken.
+       SYSTEM  (ink, rule weight, --action) carries state: accepted,
+               rejected, failed, operable. It never borrows a source colour.
+     ------------------------------------------------------------------ */
+  @font-face {
+    font-family: "Archivo"; font-style: normal; font-weight: 400 700; font-display: swap;
+    src: url("fonts/archivo-variable.woff2") format("woff2-variations");
+  }
+  @font-face {
+    font-family: "Archivo Narrow"; font-style: normal; font-weight: 500 700; font-display: swap;
+    src: url("fonts/archivo-narrow-variable.woff2") format("woff2-variations");
+  }
+
+  :root {
+    --stock:      #f7f3e8;   /* the original sheet    */
+    --copy:       #f1e9d2;   /* the carbon duplicate  */
+    --desk:       #d9cfb6;
+    --ink:        #13110d;
+    --ink-soft:   #4a4538;
+    --rule:       #cdc4ab;   /* row rule   */
+    --rule-firm:  #8c846c;   /* field rule */
+
+    /* SOURCE channel — only ever inside a plate that declares a source. */
+    --ring:          #1f5b3a;
+    --ring-wash:     #e3eee5;
+    --inferred:      #8a5a12;   /* darkened from the world's #b8761b for AA at 1080p */
+    --inferred-wash: #f6ead2;
+    --sim:           #a33124;
+    --sim-wash:      #f7e5e0;
+    --ai:            #5b3a8a;
+    --ai-wash:       #ece4f5;
+
+    /* SYSTEM channel. */
+    --action:      #1d4ed8;
+    --action-wash: #e4ebfc;
+    --on-action:   #ffffff;   /* the only white: text reversed out of the action colour */
+
+    /* One type scale, five steps. */
+    --t-figure: 34px;
+    --t-head:   21px;
+    --t-body:   17px;
+    --t-small:  15px;
+    --t-label:  13px;
+
+    --sheet-pad: clamp(16px, 2.2vw, 30px);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--desk);
+    color: var(--ink);
+    font: 400 var(--t-body)/1.5 "Archivo", ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums lining-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection { background: var(--action); color: var(--on-action); }
+  :focus-visible { outline: 3px solid var(--action); outline-offset: 2px; border-radius: 1px; }
+  * { scrollbar-color: var(--rule-firm) var(--desk); scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--desk); }
+  ::-webkit-scrollbar-thumb { background: var(--rule-firm); border: 3px solid var(--desk); }
+
+  .sheet {
+    max-width: 1340px;
+    margin: 0 auto;
+    background: var(--stock);
+    min-height: 100vh;
+    padding: 0 var(--sheet-pad) calc(var(--sheet-pad) * 1.6);
+    box-shadow: 0 10px 34px -12px rgba(19, 17, 13, .38);
+  }
+
+  /* ---------- inspection header ---------- */
+  .masthead { padding: var(--sheet-pad) 0 0; border-bottom: 3px double var(--ink); }
+  @media (max-width: 620px) { .masthead { padding-top: 16px; } }
+  .masthead-top { display: flex; flex-wrap: wrap; gap: 10px 28px; align-items: baseline; justify-content: space-between; }
+  .wordmark {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-head); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; margin: 0;
+  }
+  .wordmark span { font-weight: 500; color: var(--ink-soft); }
+  .form-no {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600;
+  }
+
+  /* boxed field cells, the way a work order boxes its fields */
+  .docket { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 0; margin: 16px 0 0; }
+  .docket > div { padding: 10px 14px 12px; border: 1px solid var(--rule); margin: 0 -1px -1px 0; }
+  .docket dt {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft);
+    font-weight: 700; margin: 0 0 3px;
+  }
+  .docket dd { margin: 0; font-size: var(--t-body); font-weight: 600; }
+  .docket .sub { display: block; font-size: var(--t-label); font-weight: 400; color: var(--ink-soft); letter-spacing: .02em; line-height: 1.4; max-width: 46ch; }
+  .docket a.ctl { margin-top: 7px; }
+
+  /* ---------- section selector ---------- */
+  .sections { display: flex; flex-wrap: wrap; padding: 0; border-bottom: 2px solid var(--ink); }
+  .sections button {
+    appearance: none; background: none; border: 0; border-bottom: 4px solid transparent;
+    font: inherit; font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-small); font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-soft); padding: 14px 20px 11px; cursor: pointer; margin-bottom: -2px;
+  }
+  .sections button:hover { color: var(--ink); background: rgba(19,17,13,.04); }
+  .sections button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+  main { padding: var(--sheet-pad) 0 0; }
+
+  /* one ruled selector line, so the inspected lines stay near the top of the sheet */
+  .selector {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 26px;
+    padding: 0 0 11px; margin: -8px 0 14px; border-bottom: 1px solid var(--rule);
+  }
+  .selector .group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .selector .field-label {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-soft); font-weight: 700;
+  }
+  .selector .note { font-size: var(--t-label); max-width: 34ch; }
+  .columns { display: grid; grid-template-columns: minmax(0, 2.15fr) minmax(300px, 1fr); gap: 32px; align-items: start; }
+
+  h2 {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-small); letter-spacing: .13em; text-transform: uppercase; margin: 0 0 12px;
+    padding-bottom: 7px; border-bottom: 2px solid var(--ink); font-weight: 700;
+  }
+  h3 {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .12em; text-transform: uppercase; margin: 26px 0 10px; font-weight: 700;
+  }
+  p { margin: 0 0 10px; max-width: 74ch; }
+  .note { font-size: var(--t-small); color: var(--ink-soft); line-height: 1.45; max-width: 74ch; }
+  .note strong { color: var(--ink); }
+
+  /* ---------- the inspected lines ---------- */
+  .lines { border-top: 2px solid var(--ink); }
+  .line { border-bottom: 1px solid var(--rule); }
+  /* one opened item carries full colour; everything around it holds its quiet */
+  .line.open { border-left: 3px solid var(--open-ink); background: var(--open-wash); }
+  .line.open .line-head, .line.open .line-head:hover { background: none; }
+  .line.open .chit { border-color: var(--open-ink); color: var(--open-ink); }
+  .line.open .stage-name { color: var(--open-ink); }
+  .line.open .drawer thead th { border-bottom-color: var(--open-ink); color: var(--open-ink); }
+  .line.open .drawer td { border-bottom-color: color-mix(in srgb, var(--open-ink) 28%, transparent); }
+  .line.open .drawer tbody tr:hover { background: color-mix(in srgb, var(--open-ink) 7%, transparent); }
+  .line-head {
+    width: 100%; display: grid; grid-template-columns: 26px 1fr auto; gap: 16px; align-items: baseline;
+    background: none; border: 0; font: inherit; text-align: left; cursor: pointer; padding: 15px 4px 13px; color: inherit;
+  }
+  .line-head > span { min-width: 0; }
+  .line-head:hover { background: rgba(19,17,13,.04); }
+  .chit { width: 24px; height: 24px; display: grid; place-items: center; border: 1.5px solid var(--ink-soft); }
+  .chit svg { display: block; }
+  .stage-name {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-head); font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  }
+  .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 10px; font-size: var(--t-small); color: var(--ink-soft); margin-top: 7px; min-width: 0; }
+  .sources .joiner { color: var(--rule-firm); }
+  .figure { font-size: var(--t-figure); font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .figure.unavailable { color: var(--ink-soft); font-weight: 400; }
+  .rate {
+    display: flex; gap: 10px; align-items: baseline; padding: 7px 4px 7px 42px;
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); color: var(--ink-soft); letter-spacing: .1em; text-transform: uppercase; font-weight: 600;
+  }
+  .rate b { color: var(--ink); font-size: var(--t-small); letter-spacing: 0; }
+
+  /* SOURCE plates: colour lives only here */
+  .plate {
+    display: inline-flex; align-items: center; gap: 7px; padding: 2px 8px 3px;
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    border: 1px solid currentColor; white-space: nowrap;
+  }
+  .plate .dot { width: 8px; height: 8px; background: currentColor; display: inline-block; }
+  .plate.ring { color: var(--ring); background: var(--ring-wash); }
+  .plate.inferred { color: var(--inferred); background: var(--inferred-wash); }
+  .plate.sim { color: var(--sim); background: var(--sim-wash); }
+  .plate.ai { color: var(--ai); background: var(--ai-wash); }
+  .plate.quiet { color: var(--ink-soft); background: none; border-color: var(--rule-firm); }
+  :root { --quiet: var(--ink-soft); --quiet-wash: #efe8d6; }
+  .plate.quiet .dot { background: none; border: 1.5px solid currentColor; width: 7px; height: 7px; }
+
+  .drawer { padding: 4px 4px 22px 42px; }
+  .drawer[hidden] { display: none; }
+
+  /* ---------- tables ---------- */
+  .scroll-x { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: var(--t-small); }
+  caption { text-align: left; font-size: var(--t-label); color: var(--ink-soft); padding-bottom: 8px; max-width: 74ch; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  thead th {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft);
+    border-bottom: 2px solid var(--ink); font-weight: 700;
+  }
+  td.num, th.num { text-align: right; }
+  thead th.num { white-space: nowrap; }
+  td.when { white-space: nowrap; }
+  tbody tr:hover { background: rgba(19,17,13,.03); }
+  .total-row td { border-top: 2px solid var(--ink); border-bottom: 0; font-weight: 700; }
+  .evref { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; margin: 2px 0; }
+  .evref .where { color: var(--ink-soft); }
+  td.pk { width: 38%; color: var(--ink-soft); }
+
+  /* ---------- the carbon duplicate: advisory and operator column ---------- */
+  .block { border: 1px solid var(--rule-firm); padding: 16px 18px 18px; background: var(--copy); }
+  .block + .block { margin-top: 18px; }
+  .block h2 { margin-top: 0; }
+  .advisory { border-top: 1px solid var(--rule); padding: 12px 0; font-size: var(--t-body); }
+  .advisory:first-of-type { border-top: 0; }
+  .advisory b {
+    display: block; font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 3px;
+  }
+
+  button.ctl, a.ctl {
+    appearance: none; font: inherit; font-size: var(--t-small); font-weight: 600; text-decoration: none;
+    background: var(--stock); color: var(--action); border: 1.5px solid var(--action);
+    padding: 7px 12px; cursor: pointer; letter-spacing: .02em; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button.ctl:hover, a.ctl:hover { background: var(--action-wash); }
+  button.ctl[aria-pressed="true"], button.ctl.on { background: var(--action); color: var(--on-action); }
+  button.ctl[disabled] { color: var(--ink-soft); border-color: var(--rule-firm); background: none; cursor: not-allowed; }
+  .ctl-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .ctl-note { font-size: var(--t-label); color: var(--ink-soft); margin-top: 9px; line-height: 1.45; max-width: 52ch; }
+
+  /* ---------- SYSTEM channel: state prints in ink, never in a source colour ---------- */
+  .stamp {
+    display: inline-block; border: 2px solid var(--ink); padding: 1px 7px 2px; color: var(--ink);
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    transform: rotate(-1.6deg);
+  }
+  .stamp.rejected { border-style: dashed; border-color: var(--rule-firm); color: var(--ink-soft); }
+  .live-dot { width: 10px; height: 10px; background: var(--ink); display: inline-block; }
+  .live-off { background: none; border: 1.5px solid var(--rule-firm); }
+
+  .banner {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    padding: 11px 16px; border: 2px solid var(--ink); background: var(--stock);
+    font-size: var(--t-small); margin-bottom: 18px;
+  }
+  .banner p { margin: 0; max-width: 88ch; }
+  .reading { padding: 26px 4px; color: var(--ink-soft); font-size: var(--t-small); border-top: 2px solid var(--ink); }
+  .banner b { font-family: "Archivo Narrow", "Archivo", sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  #notice:not(:empty) { padding-top: 16px; }
+  #notice .banner { margin-bottom: 0; }
+
+  .figure.fresh { animation: ink-in .5s cubic-bezier(.16,.84,.44,1) both; }
+  @keyframes ink-in { from { opacity: .25; filter: blur(2px); } to { opacity: 1; filter: blur(0); } }
+  .stamp.fresh { animation: stamp-down .4s cubic-bezier(.2,.9,.3,1) both; }
+  @keyframes stamp-down { from { transform: rotate(-4deg) scale(1.12); opacity: 0; } to { transform: rotate(-1.6deg) scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .figure.fresh, .stamp.fresh { animation: none; } }
+
+  .answer { font-size: var(--t-body); line-height: 1.55; margin: 14px 0 16px; max-width: 68ch; }
+  .bar { display: block; height: 9px; background: var(--ink); }
+  .hours { font-size: var(--t-small); max-width: 470px; border-top: 1px solid var(--rule); }
+  .hours > div {
+    display: grid; grid-template-columns: 56px 1fr 44px; gap: 12px; align-items: center;
+    border-bottom: 1px solid var(--rule); padding: 4px 0;
+  }
+  .hours .h { color: var(--ink-soft); }
+  .hours .n { text-align: right; font-weight: 600; }
+  .demo-mark { vertical-align: -2px; }
+
+  @media (max-width: 1050px) { .columns { grid-template-columns: 1fr; } }
+  @media (max-width: 620px) {
+    :root { --t-figure: 29px; --t-head: 19px; }
+    .line-head { grid-template-columns: 24px 1fr; }
+    .line-head .figure { grid-column: 2; margin-top: 10px; text-align: left; }
+    .rate { padding-left: 40px; }
+    .drawer { padding-left: 6px; }
+    /* the narrow sheet keeps the same fields, ruled one to a line, so the inspected
+       lines are reachable without scrolling past the whole header */
+    .docket { grid-template-columns: 1fr 1fr; margin-top: 10px; }
+    .docket > div { padding: 7px 10px 8px; margin: 0 -1px -1px 0; }
+    .docket dt { margin-bottom: 1px; }
+    .docket dd { font-size: var(--t-small); line-height: 1.3; }
+    .docket .sub { line-height: 1.3; }
+    .docket > div:last-child { grid-column: 1 / -1; }   /* no half-empty field box */
+    /* one scrolling row of tabs rather than three stacked rows */
+    .sections { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+    .sections::-webkit-scrollbar { display: none; }
+    .sections button { padding: 11px 12px 8px; font-size: var(--t-label); letter-spacing: .07em; white-space: nowrap; }
+    .plate { white-space: normal; }
+    .sources .joiner { display: none; }   /* no dangling separator when plates wrap */
+    .selector { gap: 5px 12px; padding-bottom: 9px; }
+    .selector .ctl, .selector .group { font-size: var(--t-label); }
+    .selector .ctl { padding: 5px 9px; }
+  }
 </style>
 </head>
 <body>
-<h1>DealerSight</h1>
-<div class="muted">Anonymous physical funnel from Ring events. Aggregate activity only: no customer is identified or followed between stages.</div>
-<div id="ring-status" class="muted" style="margin-top:4px"></div>
+<div class="sheet">
 
-<div class="card" style="margin:14px 0">
-  <div class="row">
-    <div class="grow">
-      <strong>Demo camera assignment</strong>
-      <div class="muted">The Ring Playground exposes one synthetic camera, so demo mode temporarily assigns it to a camera position before you generate an event. In production each Ring device has one configured placement.</div>
-      <div id="positions"></div>
-      <button onclick="disarm()">Disarm</button>
-      <div id="armed" class="muted" style="margin-top:6px"></div>
+  <header class="masthead">
+    <div class="masthead-top">
+      <h1 class="wordmark">DealerSight <span>· physical funnel inspection</span></h1>
+      <div class="form-no" id="formNo">Form DS-5</div>
     </div>
-    <div>
-      <strong>Test-drive timing</strong>
-      <div id="timing" class="muted" style="margin:4px 0"></div>
-      <button onclick="setTiming('demo')">Demo window (30 s – 5 min)</button><button onclick="setTiming('production')">Production window (5 – 90 min)</button>
-      <div class="muted" style="max-width:260px">How long after a Departure-lane event a Return-lane event still counts as one probable test-drive session.</div>
-      <div style="margin-top:6px"><button onclick="newSession()">Start new demo session</button></div>
-      <div class="muted" style="max-width:260px">Reloads the same seeded baseline and starts a fresh live session. Earlier Ring events stay in the audit history.</div>
-    </div>
-  </div>
+    <dl class="docket" id="docket"></dl>
+  </header>
+
+  <div id="notice"></div>
+
+  <div class="sections" id="sections" role="tablist" aria-label="Report sections"></div>
+
+  <main id="view" role="tabpanel" tabindex="0" aria-labelledby="tab-dealer"></main>
 </div>
 
-<div class="tabs" id="tabs"></div>
-<div id="view"></div>
-
 <script>
-const api = p => fetch(p).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
+"use strict";
+
+const api  = p => fetch(p).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
 const post = (p, b) => fetch(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b || {}) })
   .then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e.detail || r.statusText)));
+
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const time = t => t ? new Date(t).toLocaleTimeString() : "";
-const day = t => t ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }) : "";
+
+/* Every timestamp on this sheet is UTC, stated once on the form line, so a date and a
+   time in the same cell can never disagree. */
+const UTC = { timeZone: "UTC" };
+const time  = t => t ? new Date(t).toLocaleTimeString([], { ...UTC, hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+const clock = t => t ? new Date(t).toLocaleTimeString([], { ...UTC, hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) : "—";
+const day   = t => t ? new Date(t).toLocaleDateString(undefined, { ...UTC, month: "short", day: "numeric" }) : "—";
+const stamped = t => t ? `${day(t)} ${time(t)}` : "—";
+
 const pct = v => v === null || v === undefined ? "—" : `${v}%`;
-const delta = v => v === null || v === undefined ? "—" :
-  `<span class="${v > 0 ? "up" : v < 0 ? "down" : ""}">${v > 0 ? "+" : ""}${v}%</span>`;
+const signed = v => v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v}%`;
 const secs = s => s >= 60 ? `${s / 60} min` : `${s} s`;
-const sourceBadge = src => src === "ring_live" ? '<span class="badge ring">Ring</span>'
-  : src === "ring_replay" ? '<span class="badge replay">Ring replay</span>'
-  : `<span class="badge sim">${esc(src === "simulated_baseline" ? "Simulated baseline" : src)}</span>`;
 
-const TABS = { dealer: "Dealer", manufacturer: "Manufacturer", finance: "Captive finance", analyst: "AI analyst", ring: "Ring events" };
-let tab = "dealer", dealerId = null, openStage = null, scope = "all";
-let questions = [], analystResult = null, analystBusy = null;
+/* Drawn marks, one stroke weight. No glyph standing in for an icon. */
+const ICON = {
+  open:  `<svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M5.5 1v9M1 5.5h9" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>`,
+  close: `<svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1 5.5h9" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>`,
+  demo:  `<svg class="demo-mark" width="13" height="13" viewBox="0 0 13 13" role="img" aria-label="receives live Ring events"><circle cx="6.5" cy="6.5" r="2" fill="currentColor"/><path d="M2.8 2.8a5.3 5.3 0 0 0 0 7.4M10.2 2.8a5.3 5.3 0 0 1 0 7.4" stroke="currentColor" stroke-width="1.4" fill="none"/></svg>`,
+};
 
-document.getElementById("tabs").innerHTML = Object.entries(TABS)
-  .map(([key, label]) => `<button data-tab="${key}" onclick="show('${key}')">${label}</button>`).join("");
+/* Rejection reasons are stored as enums and read as English. */
+const REJECT_REASON = {
+  before_watermark: "before this session",
+  live_view: "live-view session",
+  not_armed: "no camera armed",
+  unassigned: "no camera position",
+  no_dealership: "camera not assigned to a dealership",
+  event_type_not_counted: "event type not counted",
+};
+const rejectReason = r => REJECT_REASON[r] || String(r || "").replace(/_/g, " ");
 
-function show(next) { tab = next; openStage = null; refresh(); }
-async function arm(code) { await post("/api/demo/arm", { position: code }).catch(alert); refresh(); }
-async function disarm() { await post("/api/demo/disarm").catch(alert); refresh(); }
-async function setTiming(profile) { await post("/api/demo/timing", { profile }).catch(alert); refresh(); }
-async function newSession() { await post("/api/demo/new-session").catch(alert); refresh(); }
-function pickDealer(id) { dealerId = Number(id); openStage = null; refresh(); }
-function setScope(next) { scope = next; openStage = null; refresh(); }
-function toggleStage(key) { openStage = openStage === key ? null : key; refresh(); }
+const SOURCE_PLATE = {
+  "Live Ring Playground": ["ring", "Live Ring"],
+  "Ring replay":          ["ring", "Ring replay"],
+  "Simulated baseline":   ["sim",  "Simulated baseline"],
+  "Simulated business data": ["sim", "Simulated record"],
+};
+const plate = (cls, text) => `<span class="plate ${cls}"><i class="dot"></i>${esc(text)}</span>`;
+const sourcePlate = label => { const [cls, text] = SOURCE_PLATE[label] || ["quiet", label]; return plate(cls, text); };
+const rowSource = src => src === "ring_live" ? plate("ring", "Live Ring")
+  : src === "ring_replay" ? plate("ring", "Ring replay")
+  : src === "simulated_baseline" ? plate("sim", "Simulated baseline") : plate("quiet", src);
 
-async function loadPositions() {
-  const positions = await api("/api/positions");
-  document.getElementById("positions").innerHTML = positions.map(p =>
-    `<button data-code="${p.code}" onclick="arm('${p.code}')" title="Zone: ${esc(p.zone)}">${esc(p.name)}</button>`).join("");
+const SECTIONS = { dealer: "Dealer", manufacturer: "Manufacturer", finance: "Captive finance",
+                   analyst: "AI analyst", ring: "Ring events" };
+
+const state = {
+  section: "dealer", dealerId: null, dealerName: null, scope: "all", openStage: null,
+  analyst: null, analystBusy: null, lastFigures: {}, lastEventRef: null, period: null,
+  error: null, drawn: false,
+};
+
+document.getElementById("sections").innerHTML = Object.entries(SECTIONS).map(([id, label]) =>
+  `<button role="tab" id="tab-${id}" aria-selected="${id === state.section}" aria-controls="view"
+     tabindex="${id === state.section ? 0 : -1}" data-section="${id}">${label}</button>`).join("");
+
+const READING = `<p class="reading">Reading the records for this section…</p>`;
+
+function selectSection(id, focusTab) {
+  state.section = id;
+  state.openStage = null;
+  state.drawn = false;
+  document.getElementById("view").innerHTML = READING;   // answer the click before the fetch
+  render();
+  if (focusTab) document.getElementById(`tab-${id}`).focus();
 }
 
-function funnelBlock(data, evidence) {
-  const rates = data.funnel.rates, stages = data.funnel.stages;
-  const between = ["engagement_rate", "probable_test_drive_rate", "sales_conversion", "finance_penetration"];
-  const rateLabel = { engagement_rate: "engagement rate", probable_test_drive_rate: "probable test-drive rate",
-                      sales_conversion: "sales conversion", finance_penetration: "finance penetration" };
-  return stages.map((stage, index) => `
-    <div class="stage" onclick="toggleStage('${stage.key}')">
-      <span class="val">${stage.total}</span>
-      <span><strong>${esc(stage.label)}</strong>
-        <span class="badge ${stage.source_type === "ring" ? "inf" : "sim"}">${stage.source_type === "ring" ? "Ring + inferred" : "Simulated"}</span>
-        <div class="muted">${Object.entries(stage.provenance).map(([k, v]) => `${v} ${esc(k)}`).join(" + ") || "none"}</div>
-      </span>
-    </div>
-    ${openStage === stage.key ? `<div class="card" style="margin:6px 0 6px 84px">${evidence}</div>` : ""}
-    ${index < between.length ? `<div class="arrow">↓ ${rateLabel[between[index]]}: <strong>${pct(rates[between[index]])}</strong></div>` : ""}`).join("");
+document.getElementById("sections").addEventListener("click", event => {
+  const button = event.target.closest("button[data-section]");
+  if (button) selectSection(button.dataset.section, false);
+});
+
+/* Arrow keys move between tabs, as the tab pattern requires. */
+document.getElementById("sections").addEventListener("keydown", event => {
+  const ids = Object.keys(SECTIONS);
+  const at = ids.indexOf(state.section);
+  const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: ids.length - 1 }[event.key];
+  if (to === undefined) return;
+  event.preventDefault();
+  selectSection(ids[(to + ids.length) % ids.length], true);
+});
+
+function setDealer(id) { state.dealerId = Number(id); state.openStage = null; render(); }
+function setScope(scope) { state.scope = scope; state.openStage = null; render(); }
+function clearError() { state.error = null; render(); }
+
+/* An operator action that fails reports on the sheet, in the sheet's own voice. */
+async function operate(request) {
+  state.error = null;
+  try { await request; } catch (error) { state.error = String(error); }
+  render();
 }
+const arm = code => operate(post("/api/demo/arm", { position: code }));
+const disarm = () => operate(post("/api/demo/disarm"));
+const setTiming = profile => operate(post("/api/demo/timing", { profile }));
+const newSession = () => { state.lastFigures = {}; return operate(post("/api/demo/new-session")); };
 
-function evidenceTable(rows, kind, meta) {
-  const counted = meta
-    ? `<div class="muted">Showing ${meta.shown} of ${meta.matching_rows} record(s) matching this dealership, period and source.${meta.note ? " " + esc(meta.note) : ""}</div>`
-    : "";
-  if (!rows || !rows.length) return counted || '<span class="muted">No records in this period.</span>';
-  if (kind === "sales") return `${counted}<div class="muted">Simulated business records (Ring cannot observe a sale).</div><table>
-    <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Financed</th></tr>
-    ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${r.financed ? "yes" : "no"}</td></tr>`).join("")}</table>`;
-  if (kind === "finance_deals") return `${counted}<div class="muted">Simulated captive-finance records, each linked to a simulated sale.</div><table>
-    <tr><th>When</th><th>Dealership</th><th>Model group</th><th>Promotion</th></tr>
-    ${rows.map(r => `<tr><td>${day(r.occurred_at)} ${time(r.occurred_at)}</td><td>${esc(r.dealer)}</td><td>${esc(r.model_group)}</td><td>${esc(r.promotion || "—")}</td></tr>`).join("")}</table>`;
-  return `${counted}<div class="muted">Underlying event references, each labelled <span class="badge ring">Ring</span> (live Ring Playground API event) or <span class="badge sim">Simulated baseline</span> (seeded demo history in Ring event shape).</div><table>
-    <tr><th>When</th><th>Dealership</th><th>Rule</th><th>Event references</th></tr>
-    ${rows.map(r => `<tr><td>${day(r.started_at)} ${time(r.started_at)}${r.duration_minutes ? ` · ${r.duration_minutes} min` : ""}</td>
-      <td>${esc(r.dealer || "—")}</td><td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
-      <td>${r.ring_events.map(e => `${sourceBadge(r.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td></tr>`).join("")}</table>`;
-}
-
-const EVIDENCE_KIND = { visits: "visit", engagements: "engagement", probable_test_drives: "probable_test_drive" };
-
-async function dealerView() {
-  const data = await api(`/api/funnel?scope=${scope}${dealerId ? `&dealer_id=${dealerId}` : ""}`);
-  dealerId = data.dealer.id;
-  const dealers = await api("/api/dealers");
-  const hourly = await api(`/api/metrics/hourly?scope=${scope}&dealer_id=${dealerId || ""}`);
-  let evidence = "";
-  if (openStage) {
-    const result = EVIDENCE_KIND[openStage]
-      ? await api(`/api/evidence/${EVIDENCE_KIND[openStage]}?scope=${scope}&dealer_id=${dealerId}`)
-      : await api(`/api/business/${openStage}?scope=${scope}&dealer_id=${dealerId}`);
-    evidence = evidenceTable(result.rows, openStage, result);
+async function toggleStage(key) {
+  state.openStage = state.openStage === key ? null : key;
+  await render();
+  if (state.openStage) {
+    const head = document.querySelector(`[data-stage="${state.openStage}"] .line-head`);
+    if (head) head.focus();
   }
-  const c = data.comparison, peak = Math.max(1, ...hourly.map(h => h.visits));
-  const sidePanel = c ? `
-      <strong>Worth investigating</strong>
-      <div class="muted">Detected from the numbers; describes what changed, not why.</div>
-      ${data.patterns.length ? data.patterns.map(p => `<div style="margin-top:8px">• ${esc(p.description)}</div>`).join("") : '<div class="muted" style="margin-top:8px">No pattern flagged this period.</div>'}
-      <h3>Change vs previous period</h3>
-      <table>${["visits", "engagements", "probable_test_drives", "sales", "finance_deals"].map(k =>
-        `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${c.period_a[k]} → ${c.period_b[k]}</td><td class="num">${delta(c.change_pct[k])}</td></tr>`).join("")}</table>`
-    : `<strong>Live demo session</strong>
-       <div class="muted">Ring events since this session started. A comparison with the previous period is not shown here: it would weigh a few live minutes against seven seeded days.</div>`;
-  return `
-  <div class="row">
-    <div class="card grow">
-      <div>${dealers.map(d => `<button onclick="pickDealer(${d.id})" class="${d.id === dealerId ? "active" : ""}">${esc(d.name)}${d.is_demo ? " ★" : ""}</button>`).join("")}</div>
-      <div style="margin:8px 0 4px">
-        <button onclick="setScope('all')" class="${scope === "all" ? "active" : ""}">Full period</button>
-        <button onclick="setScope('live')" class="${scope === "live" ? "active" : ""}">This demo session only</button>
-      </div>
-      <div class="muted" style="margin:0 0 6px">★ receives the live Ring Playground events.
-        ${scope === "live"
-          ? "Showing only Ring events from the current demo session, so a live event is visible on its own. Simulated business records are excluded."
-          : `Period: ${day(c.period_b.start)} – now vs ${day(c.period_a.start)} – ${day(c.period_a.end)}.`}
-        Click a stage for its evidence.</div>
-      ${funnelBlock(data, evidence)}
-      <div class="muted" style="margin-top:8px">${esc(data.note)}</div>
-    </div>
-    <div class="card" style="min-width:280px">
-      ${sidePanel}
-      <h3>Visits by hour (${esc(data.dealer.timezone)})</h3>
-      <div class="muted">${scope === "live" ? "This demo session only" : "Current period"}, in ${esc(data.dealer.name)}'s local timezone. Seeded activity runs 09:00–19:00.</div>
-      ${hourly.map(h => `<div class="muted">${String(h.hour).padStart(2, "0")}:00 <span class="bar" style="width:${100 * h.visits / peak}px"></span> ${h.visits}</div>`).join("") || '<span class="muted">No visits yet</span>'}
-    </div>
-  </div>`;
 }
 
-async function manufacturerView() {
-  const view = await api("/api/network");
-  const keys = ["visits", "engagements", "probable_test_drives", "sales", "finance_deals"];
-  const row = (name, extra, data, change) => `<tr><td>${esc(name)}</td><td class="muted">${esc(extra)}</td>
-    ${keys.map(k => `<td class="num">${data[k]}</td>`).join("")}
-    <td class="num">${delta(change.probable_test_drives)}</td><td class="num">${delta(change.sales)}</td></tr>`;
-  const head = `<tr><th>Name</th><th></th>${keys.map(k => `<th class="num">${esc(k.replace(/_/g, " "))}</th>`).join("")}
-    <th class="num">Δ test drives</th><th class="num">Δ sales</th></tr>`;
-  return `
-  <div class="card">
-    <strong>Network view — aggregates only</strong>
-    <div class="muted">Current period per dealership and region. No raw events or footage leave the dealership; the manufacturer view shows counts only.</div>
-    <h3>Dealerships</h3>
-    <table>${head}${view.dealers.map(d => row(d.dealer + (d.is_demo ? " ★" : ""), d.region, d.period_b, d.change_pct)).join("")}</table>
-    <h3>Regions</h3>
-    <table>${head}${view.regions.map(r => row(r.region, `${r.dealers} dealerships`, r.period_b, r.change_pct)).join("")}</table>
-    <h3>Network total</h3>
-    <table>${head}${row("All dealerships", "", view.network.period_b, view.network.change_pct)}</table>
-    <h3>Worth investigating</h3>
-    ${view.patterns.map(p => `<div>• <strong>${esc(p.dealer)}</strong>: ${esc(p.description)}</div>`).join("") || '<span class="muted">Nothing flagged.</span>'}
-  </div>`;
-}
-
-async function financeView() {
-  const f = await api("/api/finance");
-  const keys = ["visits", "engagements", "probable_test_drives", "sales", "finance_deals"];
-  return `
-  <div class="card">
-    <strong>${esc(f.promotion.name)}</strong> <span class="badge sim">Simulated</span>
-    <div class="muted">${day(f.promotion.starts_at)} – ${day(f.promotion.ends_at)}, compared with the equal ${f.equal_durations_days}-day period before it (${day(f.before.start)} – ${day(f.before.end)}).</div>
-    <table style="margin-top:10px">
-      <tr><th>Funnel stage</th><th class="num">Before</th><th class="num">During</th><th class="num">Change</th><th class="num">Per day before</th><th class="num">Per day during</th></tr>
-      ${keys.map(k => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td class="num">${f.before[k]}</td><td class="num">${f.during[k]}</td>
-        <td class="num">${delta(f.change_pct[k])}</td><td class="num">${f.before.per_day[k]}</td><td class="num">${f.during.per_day[k]}</td></tr>`).join("")}
-      <tr><td><strong>Finance penetration</strong></td>
-        <td class="num">${f.before.finance_deals} of ${f.before.sales}<br>${pct(f.before.rates.finance_penetration)}</td>
-        <td class="num">${f.during.finance_deals} of ${f.during.sales}<br>${pct(f.during.rates.finance_penetration)}</td>
-        <td class="num" colspan="3">${f.finance_penetration_change_pts > 0 ? "+" : ""}${f.finance_penetration_change_pts} percentage points during the promotion
-          <div class="muted">Percentage changes come from small numbers of simulated sales; the counts are shown so the size of the base is visible.</div></td></tr>
-    </table>
-    <div class="muted" style="margin-top:10px">${esc(f.note)} The finance view receives aggregate business metrics only: no footage and no individual customer information.</div>
-  </div>`;
-}
-
-async function ringView() {
-  const [events, sessionEvidence] = await Promise.all([api("/api/events/recent"),
-                                                       api("/api/evidence/probable_test_drive")]);
-  const sessions = sessionEvidence.rows;
-  return `
-  <div class="card">
-    <strong>Probable test-drive sessions</strong>
-    <div class="muted">A Return-lane event matched to the oldest open Departure-lane event inside the timing window. Time and sequence only: the same vehicle cannot be confirmed anonymously.</div>
-    <table style="margin-top:8px"><tr><th>Departure</th><th>Return</th><th>Duration</th><th>Event references</th><th>Rule</th></tr>
-    ${sessions.slice(0, 8).map(s => `<tr><td>${day(s.started_at)} ${time(s.started_at)}</td><td>${time(s.ended_at)}</td><td>${s.duration_minutes} min</td>
-      <td>${s.ring_events.map(e => `${sourceBadge(s.source)} …${esc(e.event_ref)} ${esc(e.position)}`).join("<br>")}</td>
-      <td class="muted">${esc(s.confidence)} · rules ${esc(s.rule_version)}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">None yet</td></tr>'}</table>
-    <h3>Recent Ring events (audit history)</h3>
-    <table><tr><th>Started</th><th>Device</th><th>Ring event</th><th>Camera position</th><th>Counted?</th><th>Ref</th></tr>
-    ${events.map(e => `<tr><td>${day(e.started_at)} ${time(e.started_at)}</td><td>${esc(e.device_name)}</td>
-      <td>${sourceBadge(e.source)} ${esc(e.ring_event_type)}</td>
-      <td>${esc(e.position_name || "–")}${e.zone_source === "demo_assignment" ? ' <span class="muted">(demo assignment)</span>' : ""}</td>
-      <td>${e.accepted ? '<span class="badge ok">Counted</span>' : `<span class="badge no">Not counted: ${esc(e.reject_reason)}</span>`}</td>
-      <td class="muted">…${esc(e.event_ref)}</td></tr>`).join("")}</table>
-  </div>`;
-}
-
-async function askAnalyst(questionId) {
-  analystBusy = questionId; analystResult = null; refresh();
+async function ask(questionId) {
+  state.analystBusy = questionId; state.analyst = null;
+  await render();
   try {
-    analystResult = await post("/api/analyst/ask", { question_id: questionId, dealer_id: dealerId });
-  } catch (e) {
-    analystResult = { answer: { summary: `The analyst request failed: ${String(e)}`, claims: [], investigate: [] },
+    state.analyst = await post("/api/analyst/ask", { question_id: questionId, dealer_id: state.dealerId });
+  } catch (error) {
+    state.analyst = { answer: { summary: `The analyst request failed: ${error}`, claims: [], investigate: [] },
                       answer_source: "error", packet: {} };
   }
-  analystBusy = null; refresh();
+  state.analystBusy = null;
+  render();
+}
+
+/* ---------- inspection header ---------- */
+
+function renderDocket(status) {
+  const ring = status.ring || {};
+  const live = ring.ok === true;
+
+  document.getElementById("formNo").textContent =
+    `Form DS-5 · ${status.mode === "demo" ? "demo mode" : "production mode"} · all times UTC`;
+
+  /* A blocking state is a notice under the header, not a swollen field: the docket's cells
+     stay one height, and the recovery gets the width it needs plus the one action colour. */
+  const expired = ring.ok === false;
+  const tokenCell = expired
+    ? `<dd>Expired<span class="sub">set RING_ACCESS_TOKEN in <code>.env</code>, then restart the server</span></dd>`
+    : `<dd>${live ? "Valid" : "Checking…"}<span class="sub">${live ? `last poll ${clock(ring.last_poll_at)}` : "no poll completed yet"}</span></dd>`;
+
+  document.getElementById("notice").innerHTML = `
+    ${expired ? `<div class="banner" role="status"><p><b>Live counting paused</b> — the Ring Playground token expired.
+        Figures below still show everything recorded before it did.</p>
+      <a class="ctl" href="https://developer.amazon.com/ring/console/playground" target="_blank" rel="noopener">Open the Playground</a></div>` : ""}
+    ${state.error ? `<div class="banner" role="alert"><p><b>Not applied</b> — ${esc(state.error)}</p>
+      <button class="ctl" onclick="clearError()">Dismiss</button></div>` : ""}`;
+
+  document.getElementById("docket").innerHTML = `
+    <div><dt>Dealership</dt><dd>${esc(state.dealerName || "—")}
+      ${state.section === "dealer" ? "" : `<span class="sub">viewing ${esc(SECTIONS[state.section].toLowerCase())}</span>`}</dd></div>
+    <div><dt>Period</dt><dd>${state.period ? `${day(state.period.start)} → now` : "—"}
+      <span class="sub">compared with the equal period before it</span></dd></div>
+    <div><dt>Ring camera</dt><dd>${esc(status.device || "none discovered")}</dd></div>
+    <div><dt>Ring token</dt>${tokenCell}</div>
+    <div><dt>Live events</dt><dd><span class="live-dot ${live ? "" : "live-off"}"></span>
+      ${live ? "counting" : "paused"}<span class="sub">demo session opened ${stamped(status.watermark)}</span></dd></div>`;
+}
+
+/* ---------- dealer ---------- */
+
+const EVIDENCE_KIND = { visits: "visit", engagements: "engagement", probable_test_drives: "probable_test_drive" };
+const STAGE_METHOD = {
+  visits: ["inferred", "Inferred by rules"],
+  engagements: ["inferred", "Inferred by rules"],
+  probable_test_drives: ["inferred", "Inferred by rules"],
+  sales: ["quiet", "Ring cannot observe a sale"],
+  finance_deals: ["quiet", "Ring cannot observe a finance agreement"],
+};
+const RATE_LABEL = {
+  engagement_rate: "engagement rate", probable_test_drive_rate: "probable test-drive rate",
+  sales_conversion: "sales conversion", finance_penetration: "finance penetration",
+};
+const STAGE_KEYS = ["visits", "engagements", "probable_test_drives", "sales", "finance_deals"];
+
+async function dealerSection(status) {
+  const data = await api(`/api/funnel?scope=${state.scope}${state.dealerId ? `&dealer_id=${state.dealerId}` : ""}`);
+  state.dealerId = data.dealer.id;
+  state.dealerName = data.dealer.name;
+  state.period = data.period;
+
+  const [hourly, dealers, positions, summary] = await Promise.all([
+    api(`/api/metrics/hourly?scope=${state.scope}&dealer_id=${state.dealerId}`),
+    api("/api/dealers"), api("/api/positions"), api("/api/metrics/summary"),
+  ]);
+  const armed = status.armed;
+  const [minGap, maxGap] = summary.test_drive_window_seconds;
+
+  let drawer = "";
+  if (state.openStage) {
+    const kind = EVIDENCE_KIND[state.openStage];
+    const result = kind
+      ? await api(`/api/evidence/${kind}?scope=${state.scope}&dealer_id=${state.dealerId}`)
+      : await api(`/api/business/${state.openStage}?scope=${state.scope}&dealer_id=${state.dealerId}`);
+    drawer = evidenceDrawer(result, state.openStage);
+  }
+
+  const rates = data.funnel.rates;
+  const rateKeys = ["engagement_rate", "probable_test_drive_rate", "sales_conversion", "finance_penetration"];
+  const lines = data.funnel.stages.map((stage, index) => {
+    const open = state.openStage === stage.key;
+    const [methodClass, methodText] = STAGE_METHOD[stage.key];
+    const breakdown = Object.entries(stage.provenance);
+    /* the opened line takes the colour of the source that dominates it */
+    const lead = breakdown.sort((a, b) => b[1] - a[1])[0];
+    const [leadClass] = (lead && SOURCE_PLATE[lead[0]]) || STAGE_METHOD[stage.key];
+    const openInk = `--open-ink: var(--${leadClass}); --open-wash: var(--${leadClass}-wash)`;
+    const fresh = state.lastFigures[stage.key] !== undefined && state.lastFigures[stage.key] !== stage.total;
+    state.lastFigures[stage.key] = stage.total;
+    return `
+    <div class="line ${open ? "open" : ""}" data-stage="${stage.key}" ${open ? `style="${openInk}"` : ""}>
+      <button class="line-head" aria-expanded="${open}" aria-controls="drawer-${stage.key}" onclick="toggleStage('${stage.key}')">
+        <span class="chit">${open ? ICON.close : ICON.open}</span>
+        <span>
+          <span class="stage-name">${esc(stage.label)}</span>
+          <span class="sources">
+            ${breakdown.length
+              ? breakdown.map(([label, count]) => `<span>${count} ${sourcePlate(label)}</span>`).join('<span class="joiner">+</span>')
+              : '<span class="plate quiet"><i class="dot"></i>not in this view</span>'}
+            <span class="joiner">·</span>${plate(methodClass, methodText)}
+          </span>
+        </span>
+        <span class="figure ${fresh ? "fresh" : ""}">${stage.total}</span>
+      </button>
+      <div class="drawer" id="drawer-${stage.key}" ${open ? "" : "hidden"}>${open ? drawer : ""}</div>
+    </div>
+    ${index < rateKeys.length ? `<div class="rate"><span>${RATE_LABEL[rateKeys[index]]}</span><b>${pct(rates[rateKeys[index]])}</b>
+       ${rates[rateKeys[index]] === null ? '<span>not available in this view</span>' : ""}</div>` : ""}`;
+  }).join("");
+
+  const comparison = data.comparison;
+  const peak = Math.max(1, ...hourly.map(h => h.visits));
+
+  return `
+  ${status.seed_data_stale ? `<div class="banner"><p>The demo dataset has aged out of the current period. It is regenerated on the next request.</p></div>` : ""}
+  <div class="selector">
+    <div class="group" role="group" aria-label="Dealership under inspection">
+      <span class="field-label">Dealership</span>
+      ${dealers.map(d => `<button class="ctl ${d.id === state.dealerId ? "on" : ""}" onclick="setDealer(${d.id})"
+        aria-pressed="${d.id === state.dealerId}">${esc(d.name)}${d.is_demo ? ICON.demo : ""}</button>`).join("")}
+    </div>
+    <div class="group" role="group" aria-label="What is counted">
+      <span class="field-label">Counting</span>
+      <button class="ctl ${state.scope === "all" ? "on" : ""}" aria-pressed="${state.scope === "all"}" onclick="setScope('all')">Full period</button>
+      <button class="ctl ${state.scope === "live" ? "on" : ""}" aria-pressed="${state.scope === "live"}" onclick="setScope('live')">This demo session only</button>
+    </div>
+  </div>
+  <div class="columns">
+    <section aria-label="Inspected funnel">
+      <h2>Inspected lines · ${esc(data.dealer.name)}</h2>
+      <div class="lines">${lines}</div>
+      <p class="note" style="margin-top:14px">${esc(data.note)}
+        ${state.scope === "live"
+          ? "Showing only Ring events since this demo session started; simulated business records are excluded."
+          : "Open a line to see the records behind that figure."}
+        The dealership marked ${ICON.demo} in the selector above receives the live Ring Playground events.</p>
+
+      <h3>Visits by hour · ${esc(data.dealer.timezone)}</h3>
+      <p class="note">${state.scope === "live" ? "This demo session only" : "Current period"}. Seeded activity runs 09:00–19:00.</p>
+      <div class="hours">${hourly.map(h => `<div><span class="h">${String(h.hour).padStart(2, "0")}:00</span>
+        <span><span class="bar" style="width:${Math.round(100 * h.visits / peak)}%"></span></span>
+        <span class="n">${h.visits}</span></div>`).join("")
+        || '<p class="note">No visits recorded in this view yet.</p>'}</div>
+    </section>
+
+    <aside aria-label="Advisory and operator controls">
+      <div class="block">
+        <h2>Advisory</h2>
+        ${data.patterns.length
+          ? data.patterns.map(p => `<div class="advisory"><b>${esc(p.dealer)}</b>${esc(p.description)}</div>`).join("")
+          : comparison
+            ? `<p class="note">No pattern met the reporting thresholds for this dealership and period.</p>`
+            : `<p class="note">Live session only. A comparison with the previous period is not shown here: it would weigh
+                 a few live minutes against a full period.</p>`}
+        ${comparison ? `
+        <h3>Against the previous period</h3>
+        <div class="scroll-x"><table>
+          <caption>Both periods cover ${comparison.period_a.coverage_hours} hours${comparison.equal_coverage ? "" : " (unequal)"}.</caption>
+          <thead><tr><th>Stage</th><th class="num">Then</th><th class="num">Now</th><th class="num">Change</th></tr></thead>
+          <tbody>${STAGE_KEYS.map(key => `
+            <tr><td>${esc(key.replace(/_/g, " "))}</td><td class="num">${comparison.period_a[key]}</td>
+              <td class="num">${comparison.period_b[key]}</td><td class="num">${signed(comparison.change_pct[key])}</td></tr>`).join("")}
+          </tbody>
+        </table></div>` : ""}
+      </div>
+
+      <div class="block">
+        <h2>Camera assignment</h2>
+        <p class="note">The Ring Developer Playground exposes one synthetic camera, so demo mode assigns it to a position
+          before you generate an event. In production each Ring device has one configured placement.</p>
+        <div class="ctl-row" role="group" aria-label="Camera position">
+          ${positions.map(p => `<button class="ctl ${armed && armed.position === p.code ? "on" : ""}"
+            aria-pressed="${!!(armed && armed.position === p.code)}" onclick="arm('${p.code}')"
+            title="Zone: ${esc(p.zone)}">${esc(p.name)}</button>`).join("")}
+        </div>
+        <div class="ctl-row"><button class="ctl" onclick="disarm()">Disarm</button></div>
+        <p class="ctl-note">${armed
+          ? `Armed: <strong>${esc(armed.name)}</strong> until ${time(armed.until)}.`
+          : "Not armed. New Ring events are stored in the audit history but do not count."}</p>
+        <h3>Test-drive timing</h3>
+        <p class="ctl-note"><strong>${summary.timing_profile === "demo" ? "Demo window" : "Production window"}</strong>:
+          a return ${secs(minGap)}–${secs(maxGap)} after a departure closes the session. Rules ${esc(summary.rule_version)}.</p>
+        <div class="ctl-row" role="group" aria-label="Timing profile">
+          <button class="ctl" onclick="setTiming('demo')">Demo window</button>
+          <button class="ctl" onclick="setTiming('production')">Production window</button>
+        </div>
+        <h3>Session</h3>
+        <div class="ctl-row"><button class="ctl" onclick="newSession()">Start new demo session</button></div>
+        <p class="ctl-note">Reloads the same seeded baseline and restarts live counting. Earlier Ring events stay in the
+          audit history under Ring events.</p>
+      </div>
+    </aside>
+  </div>`;
+}
+
+const DRAWER_ROWS = 8;
+
+function evidenceDrawer(result, kind) {
+  const all = result.rows || [];
+  const rows = all.slice(0, DRAWER_ROWS);
+  const counted = `<p class="note">Showing the ${rows.length} most recent of ${result.matching_rows} record(s) matching
+    this dealership, period and source.${result.note ? " " + esc(result.note) : ""}</p>`;
+  if (!rows.length) return counted;
+
+  /* One opened line carries its colour once: when every record in view shares a source,
+     the plate is stated at the head of the drawer instead of on all forty rows. */
+  const sources = [...new Set(rows.map(r => r.source))];
+  const uniform = sources.length === 1 ? sources[0] : null;
+  const uniformLine = uniform
+    ? `<p class="note">Every record in this view: ${rowSource(uniform)}</p>` : "";
+
+  if (kind === "sales" || kind === "finance_deals") {
+    return `${counted}<p class="note">Simulated business records. Ring cannot observe a sale or a finance agreement.</p>
+      <div class="scroll-x"><table><thead><tr><th>When</th><th>Dealership</th><th>Model group</th>
+        <th>${kind === "sales" ? "Financed" : "Promotion"}</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td class="when">${stamped(r.occurred_at)}</td><td>${esc(r.dealer)}</td>
+        <td>${esc(r.model_group)}</td><td>${kind === "sales" ? (r.financed ? "yes" : "no") : esc(r.promotion || "—")}</td></tr>`).join("")}
+      </tbody></table></div>`;
+  }
+
+  return `${counted}${uniformLine}<p class="note">Each record names the events behind it, with the rule version that
+    produced the result. ${uniform ? "" : `A plate marks each event's own origin.`}</p>
+    <div class="scroll-x"><table><thead><tr><th>When</th><th>Dealership</th><th>Rule</th><th>Event references</th></tr></thead><tbody>
+    ${rows.map(r => `<tr>
+      <td class="when">${stamped(r.started_at)}${r.duration_minutes ? `<br><span class="note">${r.duration_minutes} min</span>` : ""}</td>
+      <td>${esc(r.dealer || "—")}</td>
+      <td>${esc(r.confidence)} · ${esc(r.rule_version)}</td>
+      <td>${r.ring_events.map(e => `<span class="evref">${uniform ? "" : rowSource(r.source)}<span>…${esc(e.event_ref)}</span>
+        <span class="where">${esc(e.position)}</span></span>`).join("")}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+/* ---------- manufacturer ---------- */
+
+async function manufacturerSection() {
+  const view = await api("/api/network");
+  const row = (name, mark, extra, data, change, isTotal) => `<tr${isTotal ? ' class="total-row"' : ""}>
+    <td><strong>${esc(name)}</strong>${mark ? " " + ICON.demo : ""}${extra ? `<br><span class="note">${esc(extra)}</span>` : ""}</td>
+    ${STAGE_KEYS.map(k => `<td class="num">${data[k]}</td>`).join("")}
+    <td class="num">${signed(change.probable_test_drives)}</td><td class="num">${signed(change.sales)}</td></tr>`;
+  const head = `<thead><tr><th>Name</th>${STAGE_KEYS.map(k => `<th class="num">${esc(k.replace(/_/g, " "))}</th>`).join("")}
+    <th class="num">Δ test drives</th><th class="num">Δ sales</th></tr></thead>`;
+
+  return `
+  <h2>Network inspection · aggregates only</h2>
+  <p class="note">Counts per dealership and region for the current period. No raw events or footage leave the dealership:
+    the manufacturer view receives totals, and dealership rows sum to region rows, which sum to the network.
+    ${ICON.demo} marks the dealership that receives the live Ring events.</p>
+  <h3>Dealerships</h3>
+  <div class="scroll-x"><table>${head}<tbody>
+    ${view.dealers.map(d => row(d.dealer, d.is_demo, d.region, d.period_b, d.change_pct)).join("")}
+  </tbody></table></div>
+  <h3>Regions and network</h3>
+  <div class="scroll-x"><table>${head}<tbody>
+    ${view.regions.map(r => row(r.region, false, `${r.dealers} dealerships`, r.period_b, r.change_pct)).join("")}
+    ${row("All dealerships", false, "", view.network.period_b, view.network.change_pct, true)}
+  </tbody></table></div>
+  <h3>Advisory</h3>
+  ${view.patterns.map(p => `<div class="advisory"><b>${esc(p.dealer)}</b>${esc(p.description)}</div>`).join("")
+    || '<p class="note">Nothing met the reporting thresholds this period.</p>'}`;
+}
+
+/* ---------- captive finance ---------- */
+
+async function financeSection() {
+  const f = await api("/api/finance");
+  const shift = f.finance_penetration_change_pts;
+  return `
+  <h2>${esc(f.promotion.name)} ${plate("sim", "Simulated")}</h2>
+  <p class="note">${day(f.promotion.starts_at)} – ${day(f.promotion.ends_at)}, compared with the equal
+    ${f.equal_durations_days}-day period before it (${day(f.before.start)} – ${day(f.before.end)}). Aggregate business
+    metrics only: no footage and no individual customer information.</p>
+  <div class="scroll-x"><table>
+    <thead><tr><th>Funnel stage</th><th class="num">Before</th><th class="num">During</th><th class="num">Change</th>
+      <th class="num">Per day before</th><th class="num">Per day during</th></tr></thead>
+    <tbody>
+    ${STAGE_KEYS.map(k => `<tr><td>${esc(k.replace(/_/g, " "))}</td>
+      <td class="num">${f.before[k]}</td><td class="num">${f.during[k]}</td><td class="num">${signed(f.change_pct[k])}</td>
+      <td class="num">${f.before.per_day[k]}</td><td class="num">${f.during.per_day[k]}</td></tr>`).join("")}
+    <tr class="total-row"><td>finance penetration</td>
+      <td class="num">${f.before.finance_deals} of ${f.before.sales}<br>${pct(f.before.rates.finance_penetration)}</td>
+      <td class="num">${f.during.finance_deals} of ${f.during.sales}<br>${pct(f.during.rates.finance_penetration)}</td>
+      <td class="num" colspan="3">${shift === null ? esc(f.finance_penetration_unavailable_reason || "not available")
+        : `${shift > 0 ? "+" : ""}${shift} percentage points during the promotion`}</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note" style="margin-top:14px">${esc(f.note)} Percentage changes come from small numbers of simulated sales,
+    so the counts are shown beside every rate.</p>`;
+}
+
+/* ---------- AI analyst ---------- */
+
+const SOURCE_BADGE = {
+  bedrock: ["ai", "AI-generated analysis · Amazon Bedrock"],
+  fallback_rejected: ["quiet", "Deterministic fallback · AI answer rejected"],
+  fallback_unavailable: ["quiet", "Deterministic fallback · Bedrock unavailable"],
+  insufficient_data: ["quiet", "Not sent to Bedrock · insufficient data"],
+  error: ["quiet", "Request failed"],
+};
+const UNIT_SUFFIX = { percent: "%", percent_change: "%", percentage_points: " points", count: "" };
+
+async function analystSection() {
+  const [questions, log] = await Promise.all([api("/api/analyst/questions"), api("/api/analyst/log")]);
+  const r = state.analyst;
+  const [badgeClass, badgeText] = r ? (SOURCE_BADGE[r.answer_source] || ["quiet", r.answer_source]) : [];
+
+  return `
+  <div class="columns">
+    <section aria-label="Ask the analyst">
+      <h2>Ask the analyst</h2>
+      <p class="note">Three fixed questions, no free text. DealerSight computes every number; Amazon Bedrock receives a
+        packet of facts derived from the database, explains it, and never calculates. Each number it uses must name a
+        metric in that packet, and the figures below are read from the packet, not from the model.</p>
+      <div class="ctl-row">
+        ${questions.map(q => `<button class="ctl" onclick="ask('${q.id}')" ${state.analystBusy ? "disabled" : ""}>${esc(q.text)}</button>`).join("")}
+      </div>
+      ${state.analystBusy ? `<p class="note" style="margin-top:14px">Asking Bedrock…</p>` : ""}
+      ${r ? `
+        <div style="margin-top:18px">
+          ${plate(badgeClass, badgeText)}
+          ${r.model_id ? `<span class="note"> · model ${esc(r.model_id)}${r.latency_ms ? ` · ${r.latency_ms} ms` : ""}</span>` : ""}
+          ${r.packet && r.packet.scope ? `<p class="note" style="margin-top:6px">Scope: ${esc(r.packet.scope)}</p>` : ""}
+          <p class="answer">${esc(r.answer.summary)}</p>
+          ${r.answer.claims && r.answer.claims.length ? `
+            <div class="scroll-x"><table>
+              <caption>Every number the answer relies on, read from the packet and checked for metric, period, unit and
+                direction before the answer was shown.</caption>
+              <thead><tr><th>Metric named in the answer</th><th class="num">Value in the packet</th><th>Metric id</th></tr></thead>
+              <tbody>${r.answer.claims.map(c => `<tr><td>${esc(c.label)}</td>
+                <td class="num">${esc(c.value)}${esc(UNIT_SUFFIX[c.unit] ?? "")}${c.direction ? ` <span class="note">${esc(c.direction)}</span>` : ""}</td>
+                <td class="note">${esc(c.metric_id)}</td></tr>`).join("")}</tbody></table></div>` : ""}
+          ${r.answer.investigate && r.answer.investigate.length
+            ? `<h3>Worth investigating</h3><p>${r.answer.investigate.map(esc).join(" · ")}</p>` : ""}
+          ${r.error ? `<p class="note" style="margin-top:10px">Logged: ${esc(r.error)}</p>` : ""}
+        </div>` : `<p class="note" style="margin-top:16px">Pick a question. The packet the model received appears beside the answer.</p>`}
+
+      <h3>Analyst call log</h3>
+      <div class="scroll-x"><table>
+        <thead><tr><th>When</th><th>Question</th><th>Source</th><th class="num">Latency</th>
+          <th class="num">Tokens in/out</th><th>Stop</th></tr></thead>
+        <tbody>${log.map(l => `<tr><td class="when">${clock(l.asked_at)}</td><td>${esc(l.question_id)}</td>
+          <td>${esc(l.answer_source)}</td><td class="num">${l.latency_ms ?? "—"} ms</td>
+          <td class="num">${l.input_tokens ?? "—"}/${l.output_tokens ?? "—"}</td>
+          <td class="note">${esc(l.stop_reason || "—")}</td></tr>`).join("")
+          || '<tr><td colspan="6" class="note">No calls yet.</td></tr>'}</tbody>
+      </table></div>
+    </section>
+
+    <aside aria-label="The metric packet">
+      <div class="block">
+        <h2>The packet</h2>
+        <p class="note">Exactly what the model received: facts derived from the database, no rows and no free text.</p>
+        ${r && r.packet && !r.packet.insufficient_data ? packetTable(r.packet) : `<p class="note">No question asked yet.</p>`}
+      </div>
+    </aside>
+  </div>`;
 }
 
 function packetTable(packet) {
   const rows = [];
-  const add = (label, value) => rows.push(`<tr><td>${esc(label)}</td><td class="num">${esc(value)}</td></tr>`);
-  if (packet.stages && packet.rates_pct) {
-    add("Dealership", packet.dealer);
-    add("Earlier period", `${packet.period_a.start} → ${packet.period_a.end}`);
-    add("Recent period", `${packet.period_b.start} → ${packet.period_b.end}`);
-    Object.entries(packet.stages).forEach(([k, v]) => add(k.replace(/_/g, " "), `${v.a} → ${v.b} (${v.change_pct ?? "—"}%)`));
-    Object.entries(packet.rates_pct).forEach(([k, v]) => add(k.replace(/_/g, " "), `${pct(v.a)} → ${pct(v.b)}`));
-  } else if (packet.dealers) {
-    add("Period", `${packet.period_a.start} → ${packet.period_b.end}`);
-    add("Ranking rule", packet.ranking_rule);
-    add("Threshold rule", packet.threshold_rule);
-    packet.dealers.forEach(d => add(d.dealer,
-      `probable test drives ${d.probable_test_drives.a}→${d.probable_test_drives.b} (${d.probable_test_drives.change_pct}%), sales ${d.sales.a}→${d.sales.b} (${d.sales.change_pct}%)`));
-    add("Matched threshold", packet.dealers_matching_threshold.join(", ") || "none");
-  } else if (packet.stages) {
-    add("Promotion", packet.promotion);
-    add("Before", `${packet.period_before.start} → ${packet.period_before.end}`);
-    add("During", `${packet.period_during.start} → ${packet.period_during.end}`);
-    Object.entries(packet.stages).forEach(([k, v]) => add(k.replace(/_/g, " "), `${v.before} → ${v.during} (${v.change_pct ?? "—"}%)`));
-    const f = packet.finance_penetration_pct;
-    add("finance penetration", `${pct(f.before)} → ${pct(f.during)} (${f.change_points} pts)`);
-    add("counts", `${f.counts.before.text} → ${f.counts.during.text}`);
-  }
-  Object.entries(packet.data_sources || {}).forEach(([k, v]) => add(`source: ${k.replace(/_/g, " ")}`, v));
-  return `<table>${rows.join("")}</table>`;
+  const add = (label, value) => rows.push(`<tr><td class="pk">${esc(label)}</td><td>${esc(value)}</td></tr>`);
+  if (packet.dealer) add("Dealership", packet.dealer);
+  if (packet.scope) add("Scope", packet.scope);
+  if (packet.promotion) add("Promotion", packet.promotion);
+  if (packet.period_a) add("Earlier period", `${packet.period_a.start} → ${packet.period_a.end}`);
+  if (packet.period_b) add("Recent period", `${packet.period_b.start} → ${packet.period_b.end}`);
+  if (packet.period_before) add("Before", `${packet.period_before.start} → ${packet.period_before.end}`);
+  if (packet.period_during) add("During", `${packet.period_during.start} → ${packet.period_during.end}`);
+  Object.entries(packet.event_origins || {}).forEach(([period, stages]) =>
+    Object.entries(stages).forEach(([stage, origin]) => add(`${stage.replace(/_/g, " ")} (${period})`, origin)));
+  Object.entries(packet.data_sources || {}).forEach(([k, v]) => add(`method: ${k.replace(/_/g, " ")}`, v));
+  if (packet.rule_version) add("Rule version", packet.rule_version);
+  return `<div class="scroll-x"><table><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
-async function analystView() {
-  if (!questions.length) questions = await api("/api/analyst/questions");
-  const log = await api("/api/analyst/log");
-  const r = analystResult;
-  const sourceNote = {
-    bedrock: '<span class="badge ring">Generated by Amazon Bedrock</span>',
-    fallback_rejected: '<span class="badge inf">Verified deterministic fallback · AI response rejected</span>',
-    fallback_unavailable: '<span class="badge no">Deterministic fallback · Bedrock unavailable</span>',
-    insufficient_data: '<span class="badge no">Not sent to Bedrock · insufficient data</span>',
-    error: '<span class="badge no">Request failed</span>',
-  };
-  const unitSuffix = { percent: "%", percent_change: "%", percentage_points: " points", count: "" };
-  const claimRow = c => `<tr><td>${esc(c.label)}</td>
-    <td class="num">${esc(c.value)}${esc(unitSuffix[c.unit] ?? "")}${c.direction ? ` <span class="muted">${esc(c.direction)}</span>` : ""}</td>
-    <td class="muted">${esc(c.metric_id)}</td></tr>`;
+/* ---------- Ring events ---------- */
+
+async function ringSection() {
+  const [events, sessions] = await Promise.all([api("/api/events/recent"), api("/api/evidence/probable_test_drive")]);
+  const newest = events[0];
+  const fresh = newest && state.lastEventRef !== null && newest.event_ref !== state.lastEventRef;
+  if (newest) state.lastEventRef = newest.event_ref;
+
+  const shown = sessions.rows.slice(0, 8);
+  const oneSource = [...new Set(shown.map(r => r.source))];
+  const uniform = oneSource.length === 1 ? oneSource[0] : null;
+
   return `
-  <div class="row">
-    <div class="card grow">
-      <strong>Ask the analyst</strong>
-      <div class="muted">Fixed questions only. DealerSight computes every number; Amazon Bedrock receives a packet of facts derived from the database, explains it, and never calculates. Each number it uses must name a metric in that packet.</div>
-      <div>${questions.map(q => `<button onclick="askAnalyst('${q.id}')" ${analystBusy ? "disabled" : ""}>${esc(q.text)}</button>`).join("")}</div>
-      ${analystBusy ? '<div class="muted" style="margin-top:10px">Asking Bedrock…</div>' : ""}
-      ${r ? `<div style="margin-top:12px">
-        ${sourceNote[r.answer_source] || ""}
-        ${r.model_id ? `<span class="muted"> · model ${esc(r.model_id)}${r.latency_ms ? ` · ${r.latency_ms} ms` : ""}</span>` : ""}
-        <div style="margin-top:8px; font-size:15px; line-height:1.5">${esc(r.answer.summary)}</div>
-        ${r.answer.claims && r.answer.claims.length ? `<table style="margin-top:8px">
-          <tr><th>Metric named in the answer</th><th class="num">Value from the packet</th><th>Metric id</th></tr>
-          ${r.answer.claims.map(claimRow).join("")}</table>
-          <div class="muted">Values are read from the packet, not from the model. Each one is checked for metric, period, unit and direction before the answer is shown.</div>` : ""}
-        ${r.answer.investigate && r.answer.investigate.length ? `<div style="margin-top:8px">Worth investigating: ${r.answer.investigate.map(esc).join(" · ")}</div>` : ""}
-        ${r.error ? `<div class="muted" style="margin-top:6px">Logged: ${esc(r.error)}</div>` : ""}
-      </div>` : '<div class="muted" style="margin-top:12px">Pick a question. The evidence appears beside the answer.</div>'}
-      <h3>Recent analyst calls (audit log)</h3>
-      <table><tr><th>When</th><th>Question</th><th>Source</th><th>Model</th><th class="num">Latency</th><th class="num">Tokens in/out</th><th>Stop</th><th>Error</th></tr>
-      ${log.map(l => `<tr><td>${time(l.asked_at)}</td><td>${esc(l.question_id)}</td><td>${esc(l.answer_source)}</td>
-        <td class="muted">${esc(l.model_id || "—")}</td><td class="num">${l.latency_ms ?? "—"} ms</td>
-        <td class="num">${l.input_tokens ?? "—"}/${l.output_tokens ?? "—"}</td><td class="muted">${esc(l.stop_reason || "—")}</td>
-        <td class="muted">${esc(l.error || "")}</td></tr>`).join("") || '<tr><td colspan="8" class="muted">No calls yet</td></tr>'}</table>
-    </div>
-    <div class="card" style="min-width:340px; flex:1">
-      <strong>Evidence: the metric packet</strong>
-      <div class="muted">Exactly what the model received: facts derived from the database, no rows and no free text.</div>
-      ${r ? packetTable(r.packet) : '<div class="muted" style="margin-top:8px">No question asked yet.</div>'}
-    </div>
-  </div>`;
+  <h2>Probable test-drive sessions</h2>
+  <p class="note">A Return-lane event matched to the oldest open Departure-lane event inside the timing window. Time and
+    sequence only: the same vehicle cannot be confirmed anonymously, which is why these are probable sessions.
+    ${uniform ? `Every session in this view: ${rowSource(uniform)}` : ""}</p>
+  <div class="scroll-x"><table>
+    <thead><tr><th>Departure</th><th>Return</th><th class="num">Duration</th><th>Event references</th><th>Rule</th></tr></thead>
+    <tbody>${shown.map(s => `<tr>
+      <td class="when">${stamped(s.started_at)}</td><td class="when">${time(s.ended_at)}</td>
+      <td class="num">${s.duration_minutes} min</td>
+      <td>${s.ring_events.map(e => `<span class="evref">${uniform ? "" : rowSource(s.source)}<span>…${esc(e.event_ref)}</span>
+        <span class="where">${esc(e.position)}</span></span>`).join("")}</td>
+      <td class="note">${esc(s.confidence)} · ${esc(s.rule_version)}</td></tr>`).join("")
+      || '<tr><td colspan="5" class="note">None yet.</td></tr>'}</tbody>
+  </table></div>
+
+  <h3>Audit history</h3>
+  <p class="note">What Ring has sent, listed first, followed by the most recent seeded baseline events. Nothing
+    disappears: an event that did not contribute to a metric keeps its row and is stamped with the reason. <strong>Counted</strong> means the event contributed to a funnel figure;
+    a counted entrance event can still be merged into an existing visit by the 30-second cooldown.</p>
+  <div class="scroll-x"><table>
+    <thead><tr><th>Started</th><th>Camera</th><th>Ring event</th><th>Camera position</th><th>Outcome</th><th>Ref</th></tr></thead>
+    <tbody>${events.map((e, index) => `<tr>
+      <td class="when">${stamped(e.started_at)}</td>
+      <td>${esc(e.device_name)}</td>
+      <td>${rowSource(e.source)} ${esc(e.ring_event_type)}</td>
+      <td>${esc(e.position_name || "—")}${e.zone_source === "demo_assignment" ? ' <span class="note">(demo assignment)</span>' : ""}</td>
+      <td>${e.accepted
+        ? `<span class="stamp ${index === 0 && fresh ? "fresh" : ""}">Counted</span>`
+        : `<span class="stamp rejected">Not counted · ${esc(rejectReason(e.reject_reason))}</span>`}</td>
+      <td class="note">…${esc(e.event_ref)}</td></tr>`).join("")}</tbody>
+  </table></div>`;
 }
 
-async function refresh() {
-  const status = await api("/api/status");
-  const ring = status.ring;
-  document.getElementById("ring-status").innerHTML = ring.ok === false
-    ? `<span class="err">Ring: ${esc(ring.error)}</span>`
-    : `Ring: ${ring.ok ? "connected" : "connecting…"} · device: ${esc(status.device || "–")} · last poll ${time(ring.last_poll_at)} · live session since ${time(status.watermark)}`;
-  document.querySelectorAll("#positions button").forEach(b =>
-    b.classList.toggle("active", status.armed && b.dataset.code === status.armed.position));
-  document.getElementById("armed").innerHTML = status.armed
-    ? `Armed: <strong>${esc(status.armed.name)}</strong> until ${time(status.armed.until)}`
-    : "Not armed. New Ring events are stored in the audit history but not counted.";
+/* ---------- render ---------- */
 
-  const summary = await api("/api/metrics/summary");
-  const [minGap, maxGap] = summary.test_drive_window_seconds;
-  document.getElementById("timing").innerHTML =
-    `<strong>${summary.timing_profile === "demo" ? "Demo timing" : "Production timing"}</strong>: return ${secs(minGap)}–${secs(maxGap)} after departure · rules ${esc(summary.rule_version)}`;
+async function render() {
+  const status = await api("/api/status").catch(() => null);
+  if (!status) {
+    document.getElementById("view").innerHTML =
+      `<div class="banner"><p>DealerSight is not responding. Start the server, then reload this page.</p></div>`;
+    return;
+  }
 
-  document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
-  const render = { dealer: dealerView, manufacturer: manufacturerView, finance: financeView,
-                   analyst: analystView, ring: ringView }[tab];
-  document.getElementById("view").innerHTML = await render().catch(e => `<div class="card err">${esc(e)}</div>`);
+  document.querySelectorAll("#sections button").forEach(b => {
+    const current = b.dataset.section === state.section;
+    b.setAttribute("aria-selected", String(current));
+    b.tabIndex = current ? 0 : -1;
+  });
+  document.getElementById("view").setAttribute("aria-labelledby", `tab-${state.section}`);
+
+  const view = document.getElementById("view");
+  if (!state.drawn && !view.querySelector(".reading")) view.innerHTML = READING;
+
+  const section = { dealer: dealerSection, manufacturer: manufacturerSection, finance: financeSection,
+                    analyst: analystSection, ring: ringSection }[state.section];
+
+  /* Fix 4: the five-second refresh must not steal a keystroke or a scroll position.
+     Re-rendering replaces the whole view, so anything the reader is holding is kept. */
+  const held = view.contains(document.activeElement) ? document.activeElement : null;
+  const heldKey = held && (held.dataset.stage || held.getAttribute("onclick") || held.textContent.trim());
+  const scrolls = [...view.querySelectorAll(".scroll-x")].map(e => e.scrollLeft);
+
+  try {
+    view.innerHTML = await section(status);
+    state.drawn = true;
+  } catch (error) {
+    view.innerHTML = `<div class="banner"><p>${esc(error)}</p></div>`;
+  }
+
+  [...view.querySelectorAll(".scroll-x")].forEach((e, i) => { if (scrolls[i]) e.scrollLeft = scrolls[i]; });
+  if (heldKey) {
+    const again = [...view.querySelectorAll("button, a[href]")].find(
+      e => (e.dataset.stage || e.getAttribute("onclick") || e.textContent.trim()) === heldKey);
+    if (again) again.focus();
+  }
+  renderDocket(status);
+
 }
 
-loadPositions();
-refresh();
-setInterval(() => { if (!openStage) refresh(); }, 4000);
+render();
+setInterval(() => {
+  if (state.openStage || state.analystBusy) return;
+  render();
+}, 5000);
 </script>
 </body>
 </html>

@@ -185,6 +185,6 @@ def recent_events(conn, limit=20):
            JOIN device d ON d.id = e.device_id
            LEFT JOIN camera_position p ON p.id = e.camera_position_id
            LEFT JOIN zone z ON z.id = p.zone_id
-           ORDER BY e.started_at DESC LIMIT %s""",
+           ORDER BY (e.source IN ('ring_live', 'ring_replay')) DESC, e.started_at DESC LIMIT %s""",
         (limit,),
     ).fetchall()

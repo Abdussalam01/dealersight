@@ -38,11 +38,24 @@ The deterministic dataset was designed to contain specific dealership scenarios 
 2. Which dealers had increased probable test-drive activity without a corresponding increase in sales?
 3. How did the selected financing promotion perform across the complete funnel?
 
+## Full live walkthrough, 2026-10-02
+
+One operator ran the complete chain on live Playground events, with every figure traced back to a Ring event id:
+
+| Time (UTC) | Armed position | Ring event | Effect |
+|---|---|---|---|
+| 19:25:24 | Entrance | `…Z3FMTBJ3` | Counted as a visit. Dealer view moved to **252 = 1 Live Ring + 251 Simulated baseline** — the first screen on which both provenances appear on one figure. |
+| 20:12:17 | Lot: Departure lane | `…PJQP2JOS` | Opened a test-drive candidate. |
+| 20:16:45 | Lot: Return lane | `…S5ALHFVA` | Paired with the departure at **4.5 min**, inside the 30 s – 5 min demo window, producing **1 probable test-drive session** (confidence `probable`, rule `2026-09-21.1`, source `ring_live`). |
+
+An earlier unarmed event on 2026-09-23 remains in the audit history stamped *Not counted · no camera armed*,
+so the record shows both what counted and what did not.
+
 ## Gates passed
 | Gate | Date |
 |---|---|
 | 1 Ring feasibility | 2026-09-21: live Playground event armed at Entrance counted once (visits 0 → 1), unarmed event stored as `not_armed`; expiry, duplicate, and 9 more rules covered by 13 passing tests. Evidence: `docs/evidence/gate1_live_ring_event.png` |
 | 2 Event reliability | 2026-09-23: live Playground run produced a visit (Entrance), an engagement signal (Display Area, 40 s vs. 20 s threshold), and a probable test-drive session (departure 16:34:22 → return 16:36:06, 1.7 min); 27 tests cover duplicates, out-of-order events, missing returns, expired windows, overlapping departures, and repeated replay |
 | 3 Complete funnel | 2026-09-23: live Playground event counted once on the demo dealership (252 = 1 Live Ring Playground + 251 Simulated baseline; live-session view shows the event on its own with business rates unavailable). Views reconcile dealer→region→network, promotion periods are equal 7 days with no overlap, finance deals reference real simulated sales, and findings disappear when their data changes. 46 tests. |
-| 4 Meaningful AWS use | |
+| 4 Meaningful AWS use | 2026-10-02: Bedrock answers grounded in a metric packet and validated before display; a rejected answer fell back deterministically and was labelled as such on screen. Model benchmark in `docs/evidence/model-benchmark.json`. |
 | 5 Submission readiness | |

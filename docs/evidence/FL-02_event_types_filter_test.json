@@ -1,54 +1,94 @@
 {
-  "_note": "FL-02 controlled test. GET /v1/history/devices/{device_id}/events with a Ring Developer Playground token. Token and device ID omitted.",
-  "tested_at_utc": "2026-09-21T20:18:48Z",
-  "results": [
-    {
-      "query": "(no filter)",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+  "test": "Does the Ring Partner API event-type filter apply to Playground event history?",
+  "run_at": "2026-10-02T20:21:34.759803+00:00",
+  "device": "Playground Device (device id withheld)",
+  "method": "Identical GET /v1/history/devices/{id}/events requests, varying only the query parameter.",
+  "control": "event_types=totally_invalid_value. A filter that is applied must return 0 rows or an error for a value no event can match.",
+  "probes": {
+    "no_filter": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     },
-    {
-      "query": "event_types=motion.human,motion.vehicle",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+    "event_types=motion.human": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     },
-    {
-      "query": "event_types=motion",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+    "event_types=motion.human,motion.vehicle,ding": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     },
-    {
-      "query": "event_types=ding",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+    "event_types=on_demand": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     },
-    {
-      "query": "event_types=on_demand",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+    "event_types=totally_invalid_value": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     },
-    {
-      "query": "event_types=not_a_real_type",
-      "http_status": 200,
-      "events_returned": 8,
-      "event_types_in_response": [
+    "event_type=on_demand": {
+      "row_count": 22,
+      "distinct_event_types": [
         "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
+      ]
+    },
+    "filter[event_type]=on_demand": {
+      "row_count": 22,
+      "distinct_event_types": [
+        "on_demand"
+      ],
+      "attribute_keys_present": [
+        "end",
+        "event_type",
+        "is_third_party_reviewed",
+        "start"
       ]
     }
-  ]
+  },
+  "conclusion": "Every probe returns the identical full result set, including an invalid value that nothing can match. The parameter is accepted and ignored by the Playground. event_types (plural, comma-separated) is the documented spelling and was used here, so this is not a syntax error."
 }
