@@ -66,9 +66,28 @@ def rebuild(conn, now=None, rules=None):
 
 def _rebuild_locked(conn, now, rules, version):
     session = ingest.current_session(conn)
+    live_gaps = timing_window(session["timing_profile"], rules)
+    seeded_gaps = timing_window("production", rules)
+
+    def gaps_for(event):
+        # Seeded history is matched with the real-world window; live demo events use the session profile.
+        return seeded_gaps if event["source"] == "simulated_baseline" else live_gaps
+
+    derived, candidates = correlate(_counted_events(conn, session["watermark"]), rules, gaps_for, now)
+    _store(conn, derived, candidates, version)
+    return {kind: sum(1 for d in derived if d["type"] == kind) for kind in ("visit", "engagement", "probable_test_drive")}
+
+
+def correlate(events, rules, gaps_for, now):
+    """Turn counted camera events into derived events and test-drive candidates.
+
+    Pure: it touches no database and stores nothing, so the same rule can be replayed over the
+    same events under a different timing window to see whether a result depends on that
+    assumption. `gaps_for(event)` returns the (min, max) gap pair to apply to that event.
+    """
+    version = rules["rule_version"]
     cooldown = timedelta(seconds=rules["visit"]["dedup_cooldown_seconds"])
     min_engagement = timedelta(seconds=rules["engagement"]["min_duration_seconds"])
-    min_gap, max_gap = timing_window(session["timing_profile"], rules)
 
     derived, candidates = [], []
     last_visit = {}   # device -> the visit that repeat activity collapses into
@@ -76,10 +95,9 @@ def _rebuild_locked(conn, now, rules, version):
     # stops a replayed departure from pairing with a live return and being labelled live.
     open_lots = {}
 
-    for event in _counted_events(conn, session["watermark"]):
+    for event in events:
         position = event["position"]
-        # Seeded history is matched with the real-world window; live demo events use the session profile.
-        gaps = timing_window("production", rules) if event["source"] == "simulated_baseline" else (min_gap, max_gap)
+        gaps = gaps_for(event)
 
         if position == "entrance":
             visit = last_visit.get(event["device_id"])
@@ -100,6 +118,7 @@ def _rebuild_locked(conn, now, rules, version):
                 "departed_event_id": event["id"], "departed_at": event["started_at"],
                 "expires_at": event["started_at"] + gaps[1], "status": "open",
                 "matched_event_id": None, "zone_id": event["zone_id"], "source": event["source"],
+                "dealer_id": event["dealer_id"],
             }
             candidates.append(candidate)
             open_lots.setdefault((event["dealer_id"], event["source"]), []).append(candidate)
@@ -123,8 +142,7 @@ def _rebuild_locked(conn, now, rules, version):
         if candidate["status"] == "open" and candidate["expires_at"] < now:
             candidate["status"] = "expired"
 
-    _store(conn, derived, candidates, version)
-    return {kind: sum(1 for d in derived if d["type"] == kind) for kind in ("visit", "engagement", "probable_test_drive")}
+    return derived, candidates
 
 
 def _derived(kind, event, source_ids, confidence, version):
@@ -155,3 +173,43 @@ def _store(conn, derived, candidates, version):
             [(secrets.token_hex(8) if c["status"] == "open" else None, c["departed_event_id"], c["departed_at"],
               c["expires_at"], c["status"], c["matched_event_id"], version) for c in candidates],
         )
+
+
+def sensitivity(conn, dealer_id=None, periods=None, now=None, rules=None):
+    """Re-run the pairing rule under each configured timing window. Writes nothing.
+
+    A probable test-drive session is an assumption about time and sequence, not an observation
+    of a vehicle: the same vehicle cannot be confirmed anonymously. This replays the same stored
+    Ring events under alternative windows so a reader can see whether a finding depends on that
+    assumption. `periods` is {name: (start, end)}; counts are scoped exactly like the funnel.
+    """
+    rules = rules or load_rules()
+    now = now or ingest.utcnow()
+    periods = periods or {}
+    session = ingest.current_session(conn)
+    events = _counted_events(conn, session["watermark"])
+
+    def in_period(dealer, moment, bounds):
+        if dealer_id is not None and dealer != dealer_id:
+            return False
+        return bounds[0] <= moment < bounds[1]
+
+    results = []
+    for name, window in rules["test_drive"]["sensitivity"].items():
+        gaps = (timedelta(seconds=window["min_seconds"]), timedelta(seconds=window["max_seconds"]))
+        derived, candidates = correlate(events, rules, lambda event: gaps, now)
+        drives = [d for d in derived if d["type"] == "probable_test_drive"]
+        results.append({
+            "setting": name,
+            "min_seconds": window["min_seconds"],
+            "max_seconds": window["max_seconds"],
+            "counts": {
+                period: {
+                    "probable_test_drives": sum(1 for d in drives if in_period(d["dealer_id"], d["started_at"], bounds)),
+                    "unmatched_departures": sum(1 for c in candidates if c["status"] != "matched"
+                                                and in_period(c["dealer_id"], c["departed_at"], bounds)),
+                }
+                for period, bounds in periods.items()
+            },
+        })
+    return results

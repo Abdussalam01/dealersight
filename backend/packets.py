@@ -14,7 +14,7 @@ If a required metric is missing, the packet is marked `insufficient_data` and
 the model is not called at all.
 """
 
-from backend import correlation, funnel
+from backend import checks, correlation, funnel
 
 PACKET_SCHEMA_VERSION = "2026-09-23.1"
 
@@ -147,6 +147,13 @@ def _q1(conn, dealer_id, period_a, period_b):
         _metric(metrics, f"{key}.change_points", points, "percentage_points",
                 f"change in {key.replace('_', ' ')}", f"{earlier} vs {recent}")
 
+    # A probable test-drive session is an assumption about time and sequence, so the packet carries
+    # the result of re-running the pairing rule under other windows. These are deliberately NOT
+    # registered as citable metrics: a second "change in sales conversion" differing only by scope
+    # is the kind of near-duplicate a model misreads, and the validator proved it does. DealerSight
+    # performs the check; Bedrock is told the verdict and explains it.
+    review = checks.check_finding(conn, dealer["id"])
+
     return {
         "question_id": question_id,
         "question": QUESTIONS[question_id]["text"],
@@ -157,6 +164,15 @@ def _q1(conn, dealer_id, period_a, period_b):
         "stages": {key: {"a": a[key], "b": b[key], "change_pct": comparison["change_pct"][key]} for key in STAGES},
         "rates_pct": rates,
         "event_origins": origin,
+        "finding_check": {
+            "verdict": review["verdict"],
+            "reason": review["withheld_reason"],
+            "checks": [{"name": c["name"], "outcome": c["outcome"]} for c in review["checks"]],
+            "matching_settings_tested": [
+                {"setting": r["setting"], "probable_test_drives": r["probable_test_drives_b"],
+                 "sales_conversion_direction": r["direction"]} for r in review["sensitivity"]],
+            "caveat": review["caveat"],
+        },
         "metrics": metrics,
     }
 

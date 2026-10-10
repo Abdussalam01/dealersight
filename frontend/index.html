@@ -204,6 +204,27 @@
   :root { --quiet: var(--ink-soft); --quiet-wash: #efe8d6; }
   .plate.quiet .dot { background: none; border: 1.5px solid currentColor; width: 7px; height: 7px; }
 
+  /* a secondary section opens in place, with the same chit and rule as an inspected line */
+  .fold { border-top: 1px solid var(--rule); margin-top: 14px; }
+  .fold:first-of-type { margin-top: 10px; }
+  .fold-head {
+    width: 100%; display: grid; grid-template-columns: 24px 1fr; gap: 12px; align-items: baseline;
+    background: none; border: 0; font: inherit; text-align: left; cursor: pointer; padding: 11px 2px; color: inherit;
+  }
+  .fold-head:hover { background: rgba(19,17,13,.04); }
+  .fold-head .chit { width: 22px; height: 22px; }
+  .fold-title {
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); letter-spacing: .12em; text-transform: uppercase; font-weight: 700;
+  }
+  .fold-summary { display: block; font-size: var(--t-small); color: var(--ink-soft); margin-top: 3px; line-height: 1.45; }
+  .fold-body { padding: 0 2px 16px 36px; }
+  .fold-body[hidden] { display: none; }
+
+  /* one line under each section head saying what this view is and what it gives you */
+  .intro { font-size: var(--t-body); line-height: 1.5; margin: 0 0 16px; max-width: 78ch; }
+  .intro b { font-weight: 600; }
+
   .drawer { padding: 4px 4px 22px 42px; }
   .drawer[hidden] { display: none; }
 
@@ -256,6 +277,20 @@
     transform: rotate(-1.6deg);
   }
   .stamp.rejected { border-style: dashed; border-color: var(--rule-firm); color: var(--ink-soft); }
+  /* check outcomes are state, so they print in ink and rule weight like the stamps */
+  .mark {
+    display: inline-block; border: 2px solid var(--ink); padding: 0 6px 1px; color: var(--ink);
+    font-family: "Archivo Narrow", "Archivo", sans-serif;
+    font-size: var(--t-label); font-weight: 700; letter-spacing: .09em; text-transform: uppercase; white-space: nowrap;
+  }
+  .mark.caution { border-style: dashed; }
+  .mark.fail { border-style: dashed; color: var(--ink-soft); border-color: var(--rule-firm); }
+  .check { display: grid; grid-template-columns: 112px 1fr; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--rule); align-items: start; }
+  .check:first-of-type { border-top: 1px solid var(--rule); }
+  .check b { font-weight: 600; display: block; }
+  .check .detail { font-size: var(--t-small); color: var(--ink-soft); line-height: 1.45; max-width: 74ch; }
+  .verdict { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; margin: 4px 0 14px; }
+
   .live-dot { width: 10px; height: 10px; background: var(--ink); display: inline-block; }
   .live-off { background: none; border: 1.5px solid var(--rule-firm); }
 
@@ -389,7 +424,7 @@ const SECTIONS = { dealer: "Dealer", manufacturer: "Manufacturer", finance: "Cap
 const state = {
   section: "dealer", dealerId: null, dealerName: null, scope: "all", openStage: null,
   analyst: null, analystBusy: null, lastFigures: {}, lastEventRef: null, period: null,
-  error: null, drawn: false,
+  error: null, drawn: false, checks: null, checksBusy: false, open: {},
 };
 
 document.getElementById("sections").innerHTML = Object.entries(SECTIONS).map(([id, label]) =>
@@ -437,6 +472,25 @@ const disarm = () => operate(post("/api/demo/disarm"));
 const setTiming = profile => operate(post("/api/demo/timing", { profile }));
 const newSession = () => { state.lastFigures = {}; return operate(post("/api/demo/new-session")); };
 
+/* Secondary detail folds away behind the same open-in-place device as an inspected line, so the
+   page states its answer first and keeps the workings one click away. */
+function toggleFold(key) {
+  state.open[key] = !state.open[key];
+  render();
+}
+
+function fold(key, title, summary, body, openByDefault) {
+  const open = state.open[key] === undefined ? !!openByDefault : state.open[key];
+  return `<div class="fold">
+    <button class="fold-head" aria-expanded="${open}" aria-controls="fold-${key}" onclick="toggleFold('${key}')">
+      <span class="chit">${open ? ICON.close : ICON.open}</span>
+      <span><span class="fold-title">${esc(title)}</span>
+        ${summary ? `<span class="fold-summary">${summary}</span>` : ""}</span>
+    </button>
+    <div class="fold-body" id="fold-${key}" ${open ? "" : "hidden"}>${open ? body : ""}</div>
+  </div>`;
+}
+
 async function toggleStage(key) {
   state.openStage = state.openStage === key ? null : key;
   await render();
@@ -446,8 +500,28 @@ async function toggleStage(key) {
   }
 }
 
+const VERDICT = {
+  supported: ["", "Supported by the evidence on hand"],
+  not_supported: ["fail", "Not supported"],
+  depends_on_assumption: ["caution", "Depends on the matching assumption"],
+  withheld: ["fail", "Withheld"],
+};
+const OUTCOME = { pass: ["", "Pass"], caution: ["caution", "Caution"], fail: ["fail", "Not met"] };
+
+async function checkFinding() {
+  state.checksBusy = true;
+  await render();
+  try {
+    state.checks = await api(`/api/checks/finding${state.dealerId ? `?dealer_id=${state.dealerId}` : ""}`);
+  } catch (error) {
+    state.error = String(error);
+  }
+  state.checksBusy = false;
+  render();
+}
+
 async function ask(questionId) {
-  state.analystBusy = questionId; state.analyst = null;
+  state.analystBusy = questionId; state.analyst = null; state.checks = null;
   await render();
   try {
     state.analyst = await post("/api/analyst/ask", { question_id: questionId, dealer_id: state.dealerId });
@@ -487,7 +561,10 @@ function renderDocket(status) {
       ${state.section === "dealer" ? "" : `<span class="sub">viewing ${esc(SECTIONS[state.section].toLowerCase())}</span>`}</dd></div>
     <div><dt>Period</dt><dd>${state.period ? `${day(state.period.start)} → now` : "—"}
       <span class="sub">compared with the equal period before it</span></dd></div>
-    <div><dt>Ring camera</dt><dd>${esc(status.device || "none discovered")}</dd></div>
+    <div><dt>Ring camera</dt><dd>${esc(status.device || "none discovered")}
+      <span class="sub">${status.armed
+        ? `armed: ${esc(status.armed.name)} until ${time(status.armed.until)}`
+        : "not armed — set a position under Ring events"}</span></dd></div>
     <div><dt>Ring token</dt>${tokenCell}</div>
     <div><dt>Live events</dt><dd><span class="live-dot ${live ? "" : "live-off"}"></span>
       ${live ? "counting" : "paused"}<span class="sub">demo session opened ${stamped(status.watermark)}</span></dd></div>`;
@@ -583,6 +660,9 @@ async function dealerSection(status) {
   </div>
   <div class="columns">
     <section aria-label="Inspected funnel">
+      <p class="intro">One dealership's physical funnel, narrowing from everyone who arrived to the deals that
+        closed. Each line carries <b>what measured it</b> and <b>how it was worked out</b>; the rate between two
+        lines is how many got through. <b>Open any line</b> for the individual records behind that figure.</p>
       <h2>Inspected lines · ${esc(data.dealer.name)}</h2>
       <div class="lines">${lines}</div>
       <p class="note" style="margin-top:14px">${esc(data.note)}
@@ -591,12 +671,12 @@ async function dealerSection(status) {
           : "Open a line to see the records behind that figure."}
         The dealership marked ${ICON.demo} in the selector above receives the live Ring Playground events.</p>
 
-      <h3>Visits by hour · ${esc(data.dealer.timezone)}</h3>
-      <p class="note">${state.scope === "live" ? "This demo session only" : "Current period"}. Seeded activity runs 09:00–19:00.</p>
-      <div class="hours">${hourly.map(h => `<div><span class="h">${String(h.hour).padStart(2, "0")}:00</span>
-        <span><span class="bar" style="width:${Math.round(100 * h.visits / peak)}%"></span></span>
-        <span class="n">${h.visits}</span></div>`).join("")
-        || '<p class="note">No visits recorded in this view yet.</p>'}</div>
+      ${fold("hours", `Visits by hour · ${esc(data.dealer.timezone)}`,
+        `When those ${data.funnel.stages[0].total} visits happened${state.scope === "live" ? ", this demo session only" : ""}.`,
+        `<div class="hours">${hourly.map(h => `<div><span class="h">${String(h.hour).padStart(2, "0")}:00</span>
+          <span><span class="bar" style="width:${Math.round(100 * h.visits / peak)}%"></span></span>
+          <span class="n">${h.visits}</span></div>`).join("")
+          || '<p class="note">No visits recorded in this view yet.</p>'}</div>`)}
     </section>
 
     <aside aria-label="Advisory and operator controls">
@@ -608,43 +688,16 @@ async function dealerSection(status) {
             ? `<p class="note">No pattern met the reporting thresholds for this dealership and period.</p>`
             : `<p class="note">Live session only. A comparison with the previous period is not shown here: it would weigh
                  a few live minutes against a full period.</p>`}
-        ${comparison ? `
-        <h3>Against the previous period</h3>
-        <div class="scroll-x"><table>
-          <caption>Both periods cover ${comparison.period_a.coverage_hours} hours${comparison.equal_coverage ? "" : " (unequal)"}.</caption>
-          <thead><tr><th>Stage</th><th class="num">Then</th><th class="num">Now</th><th class="num">Change</th></tr></thead>
-          <tbody>${STAGE_KEYS.map(key => `
-            <tr><td>${esc(key.replace(/_/g, " "))}</td><td class="num">${comparison.period_a[key]}</td>
-              <td class="num">${comparison.period_b[key]}</td><td class="num">${signed(comparison.change_pct[key])}</td></tr>`).join("")}
-          </tbody>
-        </table></div>` : ""}
+        ${comparison ? fold("comparison", "Against the previous period",
+          `Every stage, then and now, over ${comparison.period_a.coverage_hours} equal hours.`,
+          `<div class="scroll-x"><table>
+            <thead><tr><th>Stage</th><th class="num">Then</th><th class="num">Now</th><th class="num">Change</th></tr></thead>
+            <tbody>${STAGE_KEYS.map(key => `
+              <tr><td>${esc(key.replace(/_/g, " "))}</td><td class="num">${comparison.period_a[key]}</td>
+                <td class="num">${comparison.period_b[key]}</td><td class="num">${signed(comparison.change_pct[key])}</td></tr>`).join("")}
+            </tbody></table></div>`) : ""}
       </div>
 
-      <div class="block">
-        <h2>Camera assignment</h2>
-        <p class="note">The Ring Developer Playground exposes one synthetic camera, so demo mode assigns it to a position
-          before you generate an event. In production each Ring device has one configured placement.</p>
-        <div class="ctl-row" role="group" aria-label="Camera position">
-          ${positions.map(p => `<button class="ctl ${armed && armed.position === p.code ? "on" : ""}"
-            aria-pressed="${!!(armed && armed.position === p.code)}" onclick="arm('${p.code}')"
-            title="Zone: ${esc(p.zone)}">${esc(p.name)}</button>`).join("")}
-        </div>
-        <div class="ctl-row"><button class="ctl" onclick="disarm()">Disarm</button></div>
-        <p class="ctl-note">${armed
-          ? `Armed: <strong>${esc(armed.name)}</strong> until ${time(armed.until)}.`
-          : "Not armed. New Ring events are stored in the audit history but do not count."}</p>
-        <h3>Test-drive timing</h3>
-        <p class="ctl-note"><strong>${summary.timing_profile === "demo" ? "Demo window" : "Production window"}</strong>:
-          a return ${secs(minGap)}–${secs(maxGap)} after a departure closes the session. Rules ${esc(summary.rule_version)}.</p>
-        <div class="ctl-row" role="group" aria-label="Timing profile">
-          <button class="ctl" onclick="setTiming('demo')">Demo window</button>
-          <button class="ctl" onclick="setTiming('production')">Production window</button>
-        </div>
-        <h3>Session</h3>
-        <div class="ctl-row"><button class="ctl" onclick="newSession()">Start new demo session</button></div>
-        <p class="ctl-note">Reloads the same seeded baseline and restarts live counting. Earlier Ring events stay in the
-          audit history under Ring events.</p>
-      </div>
     </aside>
   </div>`;
 }
@@ -698,6 +751,9 @@ async function manufacturerSection() {
     <th class="num">Δ test drives</th><th class="num">Δ sales</th></tr></thead>`;
 
   return `
+  <p class="intro">The same funnel across every dealership, for a manufacturer comparing sites. <b>Totals only</b> —
+    no raw events and no footage leave a dealership, and the rows add up: dealerships into regions, regions into
+    the network.</p>
   <h2>Network inspection · aggregates only</h2>
   <p class="note">Counts per dealership and region for the current period. No raw events or footage leave the dealership:
     the manufacturer view receives totals, and dealership rows sum to region rows, which sum to the network.
@@ -722,6 +778,8 @@ async function financeSection() {
   const f = await api("/api/finance");
   const shift = f.finance_penetration_change_pts;
   return `
+  <p class="intro">Did a financing promotion change behaviour? The whole funnel during the promotion against the
+    <b>equal period before it</b>, so a longer window cannot flatter the result.</p>
   <h2>${esc(f.promotion.name)} ${plate("sim", "Simulated")}</h2>
   <p class="note">${day(f.promotion.starts_at)} – ${day(f.promotion.ends_at)}, compared with the equal
     ${f.equal_durations_days}-day period before it (${day(f.before.start)} – ${day(f.before.end)}). Aggregate business
@@ -763,6 +821,9 @@ async function analystSection() {
   return `
   <div class="columns">
     <section aria-label="Ask the analyst">
+      <p class="intro">Ask about the numbers you just read. <b>DealerSight computes every figure</b> and Amazon
+        Bedrock explains them — it never calculates, and every number it uses must match the packet shown beside
+        the answer, or the answer is rejected.</p>
       <h2>Ask the analyst</h2>
       <p class="note">Three fixed questions, no free text. DealerSight computes every number; Amazon Bedrock receives a
         packet of facts derived from the database, explains it, and never calculates. Each number it uses must name a
@@ -788,6 +849,7 @@ async function analystSection() {
           ${r.answer.investigate && r.answer.investigate.length
             ? `<h3>Worth investigating</h3><p>${r.answer.investigate.map(esc).join(" · ")}</p>` : ""}
           ${r.error ? `<p class="note" style="margin-top:10px">Logged: ${esc(r.error)}</p>` : ""}
+          ${r.packet && r.packet.question_id === "q1_conversion_decline" ? checkPanel() : ""}
         </div>` : `<p class="note" style="margin-top:16px">Pick a question. The packet the model received appears beside the answer.</p>`}
 
       <h3>Analyst call log</h3>
@@ -812,6 +874,53 @@ async function analystSection() {
   </div>`;
 }
 
+/* "Check this finding": can the evidence on hand support what the answer describes? Every
+   check is computed in application code and reads only; Bedrock explains, it never checks. */
+function checkPanel() {
+  const c = state.checks;
+  if (!c) {
+    return `<h3>Check this finding</h3>
+      <p class="note">A probable test-drive session is an assumption about time and sequence, not an
+        observation of a vehicle. This re-runs the pairing rule under other matching windows and reports
+        whether the finding survives them.</p>
+      <div class="ctl-row"><button class="ctl" onclick="checkFinding()" ${state.checksBusy ? "disabled" : ""}>
+        ${state.checksBusy ? "Checking…" : "Check this finding"}</button></div>`;
+  }
+
+  const [verdictClass, verdictText] = VERDICT[c.verdict] || ["caution", c.verdict];
+  const notPassed = c.checks.filter(check => check.outcome !== "pass").length;
+  const summary = `${c.checks.length} checks${notPassed ? `, ${notPassed} not clean` : ", all clean"}`
+    + ` · ${c.sensitivity.length} matching settings tested`;
+
+  return `
+    <h3>Checks performed</h3>
+    <div class="verdict">
+      <span class="mark ${verdictClass}">${esc(verdictText)}</span>
+      ${c.withheld_reason ? `<span class="note">${esc(c.withheld_reason)}</span>` : ""}
+    </div>
+    <p class="note">${esc(c.caveat)}</p>
+    ${fold("checkwork", "How that was checked", summary, `
+      <div>${c.checks.map(check => {
+        const [markClass, markText] = OUTCOME[check.outcome] || ["caution", check.outcome];
+        return `<div class="check"><span class="mark ${markClass}">${esc(markText)}</span>
+          <span><b>${esc(check.name)}</b><span class="detail">${esc(check.detail)}</span></span></div>`;
+      }).join("")}</div>
+
+      <h3>Under other matching settings</h3>
+      <p class="note">The same stored Ring events, re-paired under each window. Nothing is written.</p>
+      <div class="scroll-x"><table>
+        <thead><tr><th>Setting</th><th>Window</th><th class="num">Sessions, earlier</th><th class="num">Sessions, recent</th>
+          <th class="num">Sales conversion</th><th>Direction</th></tr></thead>
+        <tbody>${c.sensitivity.map(r => `<tr>
+          <td>${esc(r.setting)}</td>
+          <td class="when">${secs(r.min_seconds)}–${secs(r.max_seconds)}</td>
+          <td class="num">${r.probable_test_drives_a}</td>
+          <td class="num">${r.probable_test_drives_b}</td>
+          <td class="num">${pct(r.sales_conversion_a)} → ${pct(r.sales_conversion_b)}</td>
+          <td>${esc(r.direction)}</td></tr>`).join("")}</tbody>
+      </table></div>`)}`;
+}
+
 function packetTable(packet) {
   const rows = [];
   const add = (label, value) => rows.push(`<tr><td class="pk">${esc(label)}</td><td>${esc(value)}</td></tr>`);
@@ -831,8 +940,13 @@ function packetTable(packet) {
 
 /* ---------- Ring events ---------- */
 
-async function ringSection() {
-  const [events, sessions] = await Promise.all([api("/api/events/recent"), api("/api/evidence/probable_test_drive")]);
+async function ringSection(status) {
+  const [events, sessions, positions, summary] = await Promise.all([
+    api("/api/events/recent"), api("/api/evidence/probable_test_drive"),
+    api("/api/positions"), api("/api/metrics/summary"),
+  ]);
+  const armed = status.armed;
+  const [minGap, maxGap] = summary.test_drive_window_seconds;
   const newest = events[0];
   const fresh = newest && state.lastEventRef !== null && newest.event_ref !== state.lastEventRef;
   if (newest) state.lastEventRef = newest.event_ref;
@@ -842,7 +956,34 @@ async function ringSection() {
   const uniform = oneSource.length === 1 ? oneSource[0] : null;
 
   return `
-  <h2>Probable test-drive sessions</h2>
+  <p class="intro">Everything Ring has sent and what DealerSight did with it. <b>Counted</b> events become funnel
+    figures; the rest keep their row with the reason they did not. The camera controls for the demo live here.</p>
+
+  ${fold("operator", "Camera and session controls",
+    armed ? `Armed: <strong>${esc(armed.name)}</strong> until ${time(armed.until)}.`
+          : "Not armed — new Ring events are recorded in the audit history but do not count.",
+    `<p class="note">The Ring Developer Playground exposes one synthetic camera, so demo mode assigns it to a
+       position before you generate an event. In production each Ring device has one configured placement.</p>
+     <div class="ctl-row" role="group" aria-label="Camera position">
+       ${positions.map(p => `<button class="ctl ${armed && armed.position === p.code ? "on" : ""}"
+         aria-pressed="${!!(armed && armed.position === p.code)}" onclick="arm('${p.code}')"
+         title="Zone: ${esc(p.zone)}">${esc(p.name)}</button>`).join("")}
+       <button class="ctl" onclick="disarm()">Disarm</button>
+     </div>
+     <h3>Test-drive timing</h3>
+     <p class="ctl-note"><strong>${summary.timing_profile === "demo" ? "Demo window" : "Production window"}</strong>:
+       a return ${secs(minGap)}–${secs(maxGap)} after a departure closes the session. Rules ${esc(summary.rule_version)}.</p>
+     <div class="ctl-row" role="group" aria-label="Timing profile">
+       <button class="ctl" onclick="setTiming('demo')">Demo window</button>
+       <button class="ctl" onclick="setTiming('production')">Production window</button>
+     </div>
+     <h3>Session</h3>
+     <div class="ctl-row"><button class="ctl" onclick="newSession()">Start new demo session</button></div>
+     <p class="ctl-note">Reloads the same seeded baseline and restarts live counting. Earlier Ring events stay in the
+       audit history below.</p>`,
+    !!armed)}
+
+  <h2 style="margin-top:26px">Probable test-drive sessions</h2>
   <p class="note">A Return-lane event matched to the oldest open Departure-lane event inside the timing window. Time and
     sequence only: the same vehicle cannot be confirmed anonymously, which is why these are probable sessions.
     ${uniform ? `Every session in this view: ${rowSource(uniform)}` : ""}</p>

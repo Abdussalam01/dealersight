@@ -1,0 +1,94 @@
+{
+  "evaluation": "DealerSight scenario evaluation",
+  "run_at": "2026-10-04T21:55:17.048040+00:00",
+  "method": "Each scenario builds labelled synthetic data (stored as simulated_baseline: Ring event shape, not Ring-originated), runs the real ingestion, correlation, funnel, pattern and analyst code, then compares the behaviour with the stated expectation. Every scenario runs in a transaction that is rolled back.",
+  "passed": 6,
+  "total": 6,
+  "scenarios": [
+    {
+      "key": "steady_activity_and_sales",
+      "title": "Activity and sales remain steady",
+      "expectation": "No misleading decline alert",
+      "observed": {
+        "patterns_flagged": [],
+        "verdict": "not_supported"
+      },
+      "passed": true,
+      "detail": "no pattern is flagged and the decline premise is reported as not supported"
+    },
+    {
+      "key": "test_drives_rise_while_sales_fall",
+      "title": "Probable test-drive activity rises while sales fall",
+      "expectation": "Flag the pattern and show its evidence",
+      "observed": {
+        "patterns_flagged": [
+          "test_drives_grew_without_sales"
+        ],
+        "probable_test_drives": [
+          5,
+          9
+        ],
+        "sales": [
+          4,
+          2
+        ]
+      },
+      "passed": true,
+      "detail": "the pattern is flagged with the counts behind it"
+    },
+    {
+      "key": "one_period_has_no_data",
+      "title": "One comparison period has missing data",
+      "expectation": "Explain the gap and withhold unsupported conclusions",
+      "observed": {
+        "verdict": "withheld",
+        "reason": "One period has no visits or no probable test-drive sessions, so a conversion rate cannot be compared.",
+        "failed_checks": [
+          "periods_have_data",
+          "business_records_present",
+          "survives_matching_settings"
+        ]
+      },
+      "passed": true,
+      "detail": "the verdict is withheld and names what is missing"
+    },
+    {
+      "key": "several_departures_could_match_a_return",
+      "title": "Several departures could match a return",
+      "expectation": "Show that the result depends on the matching assumption",
+      "observed": {
+        "probable_test_drives_by_setting": {
+          "strict": 0,
+          "standard": 0,
+          "generous": 4
+        }
+      },
+      "passed": true,
+      "detail": "the session count changes with the matching window, so the result is shown as assumption-dependent"
+    },
+    {
+      "key": "bedrock_is_unavailable",
+      "title": "Bedrock is unavailable",
+      "expectation": "Return the labelled deterministic fallback",
+      "observed": {
+        "answer_source": "fallback_unavailable",
+        "summary": "These metrics describe what changed at this dealership between the two periods. They do not prove a cause.",
+        "claims": 5
+      },
+      "passed": true,
+      "detail": "a labelled deterministic fallback is returned, with no invented figures"
+    },
+    {
+      "key": "model_answer_contradicts_the_figures",
+      "title": "The model's answer contradicts the figures it cites",
+      "expectation": "Reject the answer on meaning, not just on shape",
+      "observed": {
+        "answer_source": "fallback_rejected",
+        "error": "answer rejected: summary contradicts sales_conversion.change_points, which shows no material change",
+        "summary": "These metrics describe what changed at this dealership between the two periods. They do not prove a cause."
+      },
+      "passed": true,
+      "detail": "the answer is rejected for contradicting the figures and the labelled fallback is shown"
+    }
+  ]
+}

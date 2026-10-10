@@ -160,7 +160,9 @@ def test_summary_that_contradicts_its_claim_is_rejected(seeded):
     right = _answer("Sales fell while probable test drives held steady. These metrics do not prove a cause.",
                     [_claim(packet, "sales.change_pct")])
 
-    assert any("opposite" in reason for reason in analyst.validate(json.dumps(wrong), packet)[1])
+    # Assert the behaviour and the metric named, not the exact wording of the reason.
+    reasons = analyst.validate(json.dumps(wrong), packet)[1]
+    assert reasons and any("sales.change_pct" in reason for reason in reasons), reasons
     assert analyst.validate(json.dumps(right), packet)[1] == []
 
 

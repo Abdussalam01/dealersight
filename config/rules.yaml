@@ -24,6 +24,20 @@ test_drive:
     demo:
       min_seconds: 30     # compressed so the demo video can show a full session
       max_seconds: 300
+  # A matched pair is an assumption, not an observation: the same vehicle cannot be confirmed
+  # anonymously. "Check this finding" re-runs the pairing rule under each window below and
+  # reports whether the finding survives the change. These settings bracket `production`;
+  # they never replace it, and nothing here is written to the database.
+  sensitivity:
+    strict:
+      min_seconds: 600    # 10 minutes - a brief return is treated as something other than a test drive
+      max_seconds: 3600   # 60 minutes
+    standard:
+      min_seconds: 300    # the production window
+      max_seconds: 5400
+    generous:
+      min_seconds: 120    # 2 minutes
+      max_seconds: 10800  # 3 hours
 
 patterns:
   # Thresholds the metrics layer uses to flag a situation worth investigating.

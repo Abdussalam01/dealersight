@@ -8,7 +8,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import analyst, config, correlation, db, funnel, ingest, metrics, packets, seed
+from backend import analyst, checks, config, correlation, db, funnel, ingest, metrics, packets, seed
 from backend.ring_poller import RingPoller
 
 logging.basicConfig(level=logging.INFO)
@@ -212,6 +212,12 @@ def analyst_ask(request: AnalystRequest, conn=Depends(get_conn)):
     if request.question_id not in packets.QUESTIONS:
         raise HTTPException(404, f"unknown question: {request.question_id}")
     return analyst.ask(conn, request.question_id, request.dealer_id)
+
+
+@app.get("/api/checks/finding")
+def check_finding(dealer_id: int | None = None, conn=Depends(get_conn)):
+    """Can the evidence on hand support the flagged finding? Read-only; writes nothing."""
+    return checks.check_finding(conn, dealer_id)
 
 
 @app.get("/api/analyst/log")

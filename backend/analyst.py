@@ -198,7 +198,9 @@ def _prose_disagreements(summary, investigate, claims, metrics):
             opposite = (direction == "increase" and said_down and not said_up) or                        (direction == "decrease" and said_up and not said_down) or                        (direction == "flat" and (said_up or said_down) and not said_flat)
             called_flat = material and direction in ("increase", "decrease") and said_flat                 and not (said_up or said_down)
             if opposite:
-                reasons.append(f"summary describes {claim['metric_id']} as the opposite of its {direction}")
+                described = {"increase": "an increase", "decrease": "a decrease", "flat": "no material change"}
+                reasons.append(f"summary contradicts {claim['metric_id']}, which shows "
+                               f"{described.get(direction, direction)}")
             elif called_flat:
                 reasons.append(f"summary calls {claim['metric_id']} unchanged, but it moved by {claim['value']}")
     supported = {round(float(metric["value"]), 2) for metric in metrics.values() if metric["value"] is not None}
