@@ -29,10 +29,13 @@ run the server, and everything below works immediately against the seeded datase
 | Ring events audit history | Every event DealerSight has ever seen, counted or not |
 | The AI analyst | Answers via the **labelled deterministic fallback** |
 | `python scripts/run_evaluation.py` | The six-scenario evaluation, 6/6 |
-| `pytest` | 120 tests |
+| `pytest tests/test_pipeline.py` | The SQS pipeline's delivery guarantees, proven against a fake queue |
+| `pytest` | 129 tests |
 
 The optional Amazon SQS event pipeline is **off by default**, so no queue, no AWS account and no extra
-setup are involved in any of the above.
+setup are involved in any of the above. If you do want to exercise it, see
+[Trying the SQS pipeline](#trying-the-sqs-pipeline-optional) — it takes about five minutes and does not
+need a Ring token.
 
 Two things will look "off" and are **correct, designed behaviour**:
 
@@ -141,8 +144,47 @@ application runs locally and calls these services over their APIs. Setup, the IA
 handling and a model benchmark are in [`docs/aws.md`](docs/aws.md).
 
 At-least-once delivery is safe here because ingestion is keyed on the Ring event id under a unique
-constraint, and a message is deleted only after the database transaction commits. Both properties are
-tested in `tests/test_pipeline.py`.
+constraint, and a message is deleted only after the database transaction commits.
+
+### Trying the SQS pipeline (optional)
+
+**Without an AWS account**, the delivery guarantees are still verifiable — a fake queue stands in for SQS
+and records exactly what the application asked it to do:
+
+```powershell
+pytest tests/test_pipeline.py -v
+```
+
+Those tests pin the three properties the design depends on: a duplicate delivery changes no metric, a
+failed ingest leaves the message undeleted so SQS can redeliver it, and an unreadable message is dropped
+rather than retried forever.
+
+**With an AWS account**, about five minutes of setup runs real events through a real queue:
+
+1. Create a standard queue `dealersight-events-dlq`, then `dealersight-events` with **visibility timeout
+   60s** and a redrive policy pointing at the first with **maximum receives 5**.
+2. Add the `sqs:SendMessage`, `ReceiveMessage`, `DeleteMessage` and `GetQueueAttributes` statement to
+   your IAM policy, listing **both** queue ARNs.
+3. In `.env`: `EVENT_PIPELINE=sqs`, plus `SQS_QUEUE_URL` and `SQS_DLQ_URL`.
+
+Full console steps and the exact IAM statement are in
+[`docs/aws.md`](docs/aws.md#setting-up-the-queue).
+
+Then prove the round trip **without needing a Ring token** (stop the server first, or its own worker
+consumes the message before the script sees it):
+
+```powershell
+python scripts\queue_check.py
+```
+
+It publishes one synthetic Ring-shaped event and reports each step — queue depth before, sent, received,
+handled, deleted, queue depth after. The event names a device that does not exist, so ingestion rejects
+it as unknown and **the funnel data is left untouched**: this checks the transport, not the funnel.
+
+Restart the app and the **Ring events** page will read *Event delivery: **Amazon SQS** · 0 queued · 0 in
+flight · 0 dead-lettered* instead of *direct*. A live Ring event then travels
+`poller → SQS → worker → PostgreSQL` and produces exactly the same counted visit as in `local` mode —
+the route changes, the result does not.
 
 The AWS work is a multi-step workflow, not a single text-generation call: DealerSight computes every
 number, derives a structured metric packet, runs deterministic checks over alternative pairing
@@ -333,14 +375,17 @@ normal ingest path on a separate "Replay camera (not live)" device. Replayed eve
 ## Tests
 
 ```powershell
-pytest                                  # 120 tests
+pytest                                  # 129 tests
 pytest tests/test_scenarios.py -q       # the six evaluation scenarios
+pytest tests/test_pipeline.py -q        # the SQS delivery guarantees, against a fake queue
 python scripts/run_evaluation.py        # the same scenarios, as a report
 ```
 
 Tests use a separate `dealersight_test` database on the same Postgres container, created automatically.
-They need Docker running; they do **not** need Ring or AWS credentials — Bedrock is stubbed, including a
-scenario that asserts the labelled fallback appears when Bedrock is unavailable.
+They need Docker running; they do **not** need Ring or AWS credentials — Bedrock and SQS are both
+stubbed, including a scenario that asserts the labelled fallback appears when Bedrock is unavailable.
+Tests are pinned to `local` mode regardless of what is in your `.env`, so enabling the queue cannot
+change what the suite exercises.
 
 ## Project documentation
 
