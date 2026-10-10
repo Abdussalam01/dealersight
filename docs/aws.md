@@ -144,12 +144,24 @@ it is logged instead.
     "sqs:DeleteMessage",
     "sqs:GetQueueAttributes"
   ],
-  "Resource": [
-    "arn:aws:sqs:us-east-1:<account-id>:dealersight-events",
-    "arn:aws:sqs:us-east-1:<account-id>:dealersight-events-dlq"
-  ]
+  "Resource": "arn:aws:sqs:us-east-1:<account-id>:dealersight-events"
+},
+{
+  "Sid": "DealerSightDeadLetterQueueMonitoring",
+  "Effect": "Allow",
+  "Action": "sqs:GetQueueAttributes",
+  "Resource": "arn:aws:sqs:us-east-1:<account-id>:dealersight-events-dlq"
 }
 ```
+
+DealerSight never sends to, receives from or deletes from the dead-letter queue — it only reads its
+depth for the status panel — so the second statement is deliberately narrower than the first. SQS itself
+moves messages there under the redrive policy; that does not require any permission of ours.
+
+Set the dead-letter queue's **message retention period longer than the main queue's** — 14 days against
+the default 4 — so a message that fails is still there to inspect after a weekend. AWS recommends the
+dead-letter queue retain messages longer than its source, because retention is counted from the moment
+the message first entered the *original* queue, not from when it was moved.
 
 5. **Set the environment variables** and restart:
 
@@ -208,7 +220,8 @@ Current pricing per model is on the Amazon Bedrock pricing page.
 | `stopReason` other than `end_turn` / `stop_sequence` (max tokens, content filter, guardrail) | Deterministic fallback |
 | Model answer fails claim validation | Answer rejected, deterministic fallback shown, rejected text kept in the audit log |
 | Queued event fails to ingest (`sqs` mode) | The message is not deleted, so SQS redelivers it after the visibility timeout; after 5 receives the redrive policy moves it to the dead-letter queue |
-| Queue unreachable (`sqs` mode) | The worker logs and retries; the Ring poller keeps polling, so events accumulate in the queue rather than being lost |
+| Worker unavailable (`sqs` mode) | Published events accumulate in the queue until a worker consumes them; nothing is lost |
+| Publishing to the queue fails (`sqs` mode) | The poll fails and is retried on the next interval. Events are re-fetched from Ring Event History, so anything still inside the 30-minute overlap window is recovered; delivery is not guaranteed for an outage longer than that window |
 
 Errors are sanitized before they are stored or displayed: ARNs, access key ids, 12-digit account ids and
 request ids are replaced with placeholders.

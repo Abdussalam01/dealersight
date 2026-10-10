@@ -1,6 +1,6 @@
 # Product Feedback
 
-Written during development (Sept 21–27, 2026), not reconstructed at the end. Related friction-log entries
+Maintained during development (21 September – 10 October 2026), not reconstructed at the end. Related friction-log entries
 are referenced as FL-xx; sanitized evidence is in `docs/evidence/`.
 
 ---
@@ -119,9 +119,12 @@ Model `amazon.nova-pro-v1:0` in us-east-1, called from `backend/analyst.py`. See
 The Converse API is the same shape across model families, so comparing models meant changing one string.
 First successful call took about ten minutes from an empty AWS account. Responses carry `usage` token
 counts and `stopReason`, which we log and display; `stopReason` in particular lets us reject an answer
-that ended because of a token limit or a content filter rather than because it finished. Latency was
-about 1 second for a 3,300-token packet, fast enough to use live on stage. `temperature: 0` gave stable
-output across repeated runs.
+that ended because of a token limit or a content filter rather than because it finished. Median latency was
+about 2 seconds for a 3,300-token packet, fast enough to use live on stage. `temperature: 0` did **not**
+give identical wording across repeated runs — the benchmark shows the same question and packet producing
+up to three distinct summaries in three runs — but validation was reliable: every Nova Pro answer in the
+benchmark passed claim checking. Treat temperature 0 as reducing variance, not removing it, and validate
+the output rather than assuming it is deterministic.
 
 **3. What needs improvement?**
 - **Model access failures are hard to tell apart.** An IAM gap and a missing use-case submission both

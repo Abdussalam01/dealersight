@@ -163,8 +163,9 @@ rather than retried forever.
 
 1. Create a standard queue `dealersight-events-dlq`, then `dealersight-events` with **visibility timeout
    60s** and a redrive policy pointing at the first with **maximum receives 5**.
-2. Add the `sqs:SendMessage`, `ReceiveMessage`, `DeleteMessage` and `GetQueueAttributes` statement to
-   your IAM policy, listing **both** queue ARNs.
+2. Add two IAM statements: `sqs:SendMessage`, `ReceiveMessage`, `DeleteMessage` and
+   `GetQueueAttributes` on the **main queue**, and `sqs:GetQueueAttributes` alone on the **dead-letter
+   queue** — DealerSight only reads its depth.
 3. In `.env`: `EVENT_PIPELINE=sqs`, plus `SQS_QUEUE_URL` and `SQS_DLQ_URL`.
 
 Full console steps and the exact IAM statement are in
@@ -395,7 +396,6 @@ change what the suite exercises.
 - [`docs/ring-findings.md`](docs/ring-findings.md) — what the Ring Playground and API actually return
 - [`docs/friction-log.md`](docs/friction-log.md) — developer friction, with evidence in `docs/evidence/`
 - [`docs/product-feedback.md`](docs/product-feedback.md) — feedback on every tool, API and SDK used
-- [`docs/submission.md`](docs/submission.md) — project description and submission answers
 
 ## Licence
 
