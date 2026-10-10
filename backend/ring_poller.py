@@ -14,7 +14,7 @@ import logging
 import threading
 from datetime import timedelta
 
-from backend import config, correlation, db, ingest
+from backend import config, correlation, db, ingest, pipeline
 from backend.ring_client import RingAuthError, RingClient
 
 log = logging.getLogger("dealersight.poller")
@@ -23,11 +23,13 @@ OVERLAP_MINUTES = 30
 
 
 class RingPoller:
-    def __init__(self, client=None, interval=None):
+    def __init__(self, client=None, interval=None, sqs=None):
         self.client = client or RingClient()
         self.interval = interval or config.RING_POLL_SECONDS
+        self.sqs = sqs   # injected in tests; built lazily in sqs mode otherwise
         self.status = {"ok": None, "error": None, "last_poll_at": None, "devices": 0,
-                       "scan_complete": None, "overlap_minutes": OVERLAP_MINUTES}
+                       "scan_complete": None, "overlap_minutes": OVERLAP_MINUTES,
+                       "pipeline": pipeline.mode()}
         self._stop = threading.Event()
         self._thread = None
 
@@ -40,7 +42,8 @@ class RingPoller:
             ingest.ensure_device(conn, device["id"], name)
             results += self._poll_device(conn, device["id"], watermark)
         correlation.rebuild(conn)  # every poll, so departures also expire on time
-        self.status.update(ok=True, error=None, last_poll_at=ingest.utcnow().isoformat(), devices=len(devices))
+        self.status.update(ok=True, error=None, last_poll_at=ingest.utcnow().isoformat(), devices=len(devices),
+                           pipeline=pipeline.mode())
         return results
 
     def _poll_device(self, conn, ring_device_id, watermark):
@@ -57,12 +60,19 @@ class RingPoller:
                     continue
                 if ingest.is_known_event(conn, event.get("id")):
                     continue                # already stored: keep scanning for late arrivals
-                results.append(ingest.ingest(conn, event))
+                results.append(self._deliver(conn, event))
             if reached_old or not next_link:
                 complete = True
                 break
         self.status["scan_complete"] = complete
         return results
+
+    def _deliver(self, conn, event):
+        """Hand the event to ingestion, directly or through the queue."""
+        if pipeline.mode() != "sqs":
+            return ingest.ingest(conn, event)
+        message_id = pipeline.publish(event, self.sqs)
+        return {"status": "queued", "message_id": message_id, "ring_event_id": event.get("id")}
 
     def _run(self):
         with db.connect() as conn:

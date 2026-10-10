@@ -20,6 +20,15 @@ AWS_PROFILE = os.getenv("AWS_PROFILE", "")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "")
 
+# Event delivery between the Ring poller and ingestion.
+#   local (default) - the poller ingests directly; needs no AWS account
+#   sqs             - the poller publishes to Amazon SQS and a worker ingests
+EVENT_PIPELINE = os.getenv("EVENT_PIPELINE", "local").strip().lower()
+SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
+SQS_DLQ_URL = os.getenv("SQS_DLQ_URL", "")
+SQS_WAIT_SECONDS = int(os.getenv("SQS_WAIT_SECONDS", "20"))   # long poll; 20 is the SQS maximum
+SQS_BATCH = int(os.getenv("SQS_BATCH", "10"))                 # messages per receive, 10 is the maximum
+
 
 def ring_access_token():
     """Read at call time so a refreshed token in .env is picked up after reload."""

@@ -120,19 +120,36 @@ Evidence files live in `docs/evidence/` and are sanitized (no tokens, no device/
 - **Workaround:** The analyst gets a structured metric packet as its only source of facts, a system prompt that forbids unsupported claims, an explicit `insufficient data` path, and a check that every number in the answer appears in the packet.
 - **Suggestion:** Document grounding and tone best practices per model in the Bedrock model catalog, e.g. an example system prompt for "explain only these provided facts" use cases.
 
-# Administrative
-
-## FL-06: AWS promotional credits pending
+## FL-08: A least-privilege Bedrock policy is denied when the model resolves to a cross-region inference profile
 | | |
 |---|---|
-| Date | 2026-09-21 |
-| Environment | Hackathon AWS credits request |
-| Status | Resolved (approved 2026-09-27) |
+| Date tested | 2026-10-10 |
+| Environment / endpoint | Amazon Bedrock Converse API · `amazon.nova-pro-v1:0` · us-east-1 · IAM user with an inline policy |
+| Docs | [Bedrock IAM policy examples](https://docs.aws.amazon.com/bedrock/latest/userguide/security-iam.html) · [Cross-region inference](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html) |
+| Evidence | The two policies, before and after, in `docs/aws.md` |
+| Status | Resolved (policy widened to the documented resource types) |
 
-- **Task attempted:** Obtain AWS credits before using Bedrock.
-- **Steps taken:** Submitted the credits request.
-- **Expected result:** Confirmation or a status/ETA.
-- **Actual result:** No response for six days, then approved on 2026-09-27. No notification arrived; we only found out by checking the account.
-- **Severity:** Low. Not blocking.
-- **Workaround:** Pay-as-you-go with a billing alarm; Phase 0 Bedrock calls used ~30–60 tokens each.
-- **Suggestion:** Show request status and expected turnaround on the request page.
+- **Task attempted:** Give the project's IAM user the narrowest policy that still allows the analyst to call Bedrock.
+- **Steps taken:** Wrote an inline policy allowing `bedrock:InvokeModel` on `arn:aws:bedrock:us-east-1::foundation-model/*` and `arn:aws:bedrock:us-east-1:*:inference-profile/*`, following the region the application is configured for, then called the Converse API.
+- **Expected result:** A policy scoped to the single configured region is sufficient to invoke a model in that region.
+- **Actual result:** Invocation was denied. The policy only worked once it was widened on two independent axes: the foundation-model resource to `arn:aws:bedrock:us-*::foundation-model/*`, because a request made in us-east-1 can be fulfilled in another US region by cross-region inference; and the inference-profile resource to the `us.*` prefix, because model ids beginning `us.` are inference profiles and are authorised as a different resource type from foundation models.
+- **Severity:** Medium. The failure appears at runtime as an access denial, not at policy-save time, and the obvious fix — "grant the region I configured" — is the wrong one.
+- **Workaround:** The working policy is in `docs/aws.md`, with both resource lines explained inline so the next developer does not repeat the narrowing.
+- **Suggestion:** State in the IAM policy examples that a region-pinned `foundation-model` resource is insufficient whenever cross-region inference may serve the request, and that `us.*` model ids require an `inference-profile` resource. A console warning when a saved Bedrock policy cannot satisfy the account's default inference profile would catch this before the first call.
+
+## FL-09: Monitoring a dead-letter queue needs its ARN listed separately, and the failure only appears at runtime
+| | |
+|---|---|
+| Date tested | 2026-10-10 |
+| Environment / endpoint | Amazon SQS · standard queue with a redrive policy · us-east-1 |
+| Docs | [SQS dead-letter queues](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html) |
+| Evidence | `backend/pipeline.py` → `status()`; `scripts/queue_check.py` output |
+| Status | Resolved (both ARNs listed; the reporting path made non-fatal) |
+
+- **Task attempted:** Report queue depth and dead-letter depth in the application's status panel.
+- **Steps taken:** Created `dealersight-events` with `dealersight-events-dlq` attached by a redrive policy, and wrote an IAM statement granting `sqs:SendMessage`, `sqs:ReceiveMessage`, `sqs:DeleteMessage` and `sqs:GetQueueAttributes` on the main queue.
+- **Expected result:** Attaching a dead-letter queue by redrive policy makes it part of the same pipeline, so a policy covering the pipeline would cover both.
+- **Actual result:** `AccessDenied` on `sqs:GetQueueAttributes` for the dead-letter queue. The redrive relationship grants nothing: the DLQ is a separate resource and must be listed in its own right. Nothing surfaces this at configuration time — the queue saves happily, messages flow, and only the monitoring call fails, which is the part least likely to be exercised early.
+- **Severity:** Low for delivery, higher for operations: the number you would most want during an incident is the one that silently fails.
+- **Workaround:** List both queue ARNs. Separately, DealerSight now reads the dead-letter depth in its own guarded call, so failing to read it degrades to a note and cannot hide the main queue's figures or interfere with delivery.
+- **Suggestion:** When a redrive policy is configured in the console, offer the matching IAM statement including both ARNs, the way the Bedrock console offers model-access policies.

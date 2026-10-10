@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from backend import db, ingest
+from backend import config, db, ingest
 
 ADMIN_URL = os.getenv("TEST_ADMIN_DATABASE_URL", "postgresql://dealersight:dealersight@localhost:5433/postgres")
 TEST_URL = os.getenv("TEST_DATABASE_URL", "postgresql://dealersight:dealersight@localhost:5433/dealersight_test")
@@ -19,6 +19,19 @@ def test_database():
     with psycopg.connect(ADMIN_URL, autocommit=True) as admin:
         if not admin.execute("SELECT 1 FROM pg_database WHERE datname = 'dealersight_test'").fetchone():
             admin.execute("CREATE DATABASE dealersight_test")
+
+
+@pytest.fixture(autouse=True)
+def local_pipeline(monkeypatch):
+    """Tests must not depend on the developer's .env.
+
+    `EVENT_PIPELINE` is read at import time, so a machine configured for SQS would otherwise
+    make the poller publish instead of ingest and fail unrelated tests. Every test starts in
+    local mode; the queue tests opt back in explicitly.
+    """
+    monkeypatch.setattr(config, "EVENT_PIPELINE", "local")
+    monkeypatch.setattr(config, "SQS_QUEUE_URL", "")
+    monkeypatch.setattr(config, "SQS_DLQ_URL", "")
 
 
 @pytest.fixture

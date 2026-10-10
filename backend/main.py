@@ -8,11 +8,12 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import analyst, checks, config, correlation, db, funnel, ingest, metrics, packets, seed
+from backend import analyst, checks, config, correlation, db, funnel, ingest, metrics, packets, pipeline, seed
 from backend.ring_poller import RingPoller
 
 logging.basicConfig(level=logging.INFO)
 poller = RingPoller()
+worker = pipeline.Worker()
 
 
 @asynccontextmanager
@@ -23,8 +24,11 @@ async def lifespan(app):
         seed.ensure_fresh(conn)   # first run, or the demo data has aged out of the current period
     if os.getenv("DISABLE_POLLER") != "1":
         poller.start()
+        if pipeline.mode() == "sqs":
+            worker.start()   # consumes what the poller publishes
     yield
     poller.stop()
+    worker.stop()
 
 
 app = FastAPI(title="DealerSight", lifespan=lifespan)
@@ -59,6 +63,7 @@ def status(conn=Depends(get_conn)):
         "armed": {"position": armed["position_code"], "name": armed["position_name"], "until": armed["valid_to"]} if armed else None,
         "watermark": ingest.current_session(conn)["watermark"],
         "seed_data_stale": seed.is_stale(conn),
+        "pipeline": {**pipeline.status(), "worker": worker.status},
         "server_time": now,
     }
 

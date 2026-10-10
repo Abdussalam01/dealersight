@@ -183,12 +183,52 @@ Yes.
 
 ---
 
-## 6. AWS services used, for the AWS Builder mini challenge
+## 6. Amazon SQS (standard queue with a dead-letter queue)
+
+**1. What was it used for?**
+Carrying each Ring event from the poller to ingestion when `EVENT_PIPELINE=sqs`, so polling and
+processing are separated: a slow or failing ingest cannot stall the Ring poll, and a crash mid-ingest
+redelivers the event rather than losing it. A dead-letter queue takes messages that fail five receives.
+The application runs without it — `local` is the default — so the queue is an opt-in production shape
+rather than a dependency.
+
+**2. What worked well?**
+Creating a queue, attaching a dead-letter queue by redrive policy and setting a maximum receive count
+took a few minutes in the console with no surprises. At-least-once delivery suited an already idempotent
+consumer: ingestion is keyed on the Ring event id under a unique constraint, so a duplicate delivery is
+recorded as a duplicate and changes no metric. The visibility-timeout contract made "delete only after
+the database transaction commits" straightforward to implement correctly, and per-request
+`WaitTimeSeconds` meant long polling needed no queue-level configuration at all. The free tier covers a
+project of this size comfortably.
+
+**3. What needs improvement?**
+Two things cost time, both documented in the friction log:
+
+- A dead-letter queue attached by a redrive policy is still a **separate IAM resource**. A policy
+  covering the pipeline's main queue is denied on `sqs:GetQueueAttributes` for the DLQ, and nothing
+  surfaces this at configuration time — the queue saves, messages flow, and only the monitoring call
+  fails. The console could offer the matching IAM statement, including both ARNs, when a redrive policy
+  is configured.
+- The relationship between the queue's **Receive message wait time** and a consumer's per-request
+  `WaitTimeSeconds` is easy to misread as one setting. Stating on the queue-creation page that the
+  per-request value overrides the queue default would remove the question.
+
+**4. Onboarding from zero to a working example?**
+Good. From no queue to a verified round trip — published, received, handled, deleted, with queue depth
+before and after — took roughly fifteen minutes including the IAM correction above.
+
+**5. Would we build with it again?**
+Yes. The semantics are simple enough to reason about precisely, which is what matters for an event path:
+at-least-once plus an idempotent consumer plus delete-after-commit gives a pipeline whose failure modes
+can be written down and tested. The dead-letter queue is the part we would not now build without.
+
+## 7. AWS services used, for the AWS Builder mini challenge
 
 | Service | Region | Purpose | Code |
 |---|---|---|---|
 | Amazon Bedrock (Converse, `amazon.nova-pro-v1:0`) | us-east-1 | Explains computed metric packets for the three analyst questions | `backend/analyst.py` |
-| AWS IAM | global | Project-scoped user permitted only to invoke Bedrock models in us-east-1 | policy in `docs/aws.md` |
+| Amazon SQS (standard queue + dead-letter queue) | us-east-1 | Carries Ring events from the poller to ingestion when `EVENT_PIPELINE=sqs`; opt-in, with `local` the default | `backend/pipeline.py` |
+| AWS IAM | global | Project-scoped user permitted to invoke Bedrock foundation models and US cross-region inference profiles, read the model catalogue, and use the one event queue | policy in `docs/aws.md` |
 
 No other AWS service is used, and none appears in the architecture diagram. Full setup instructions,
 failure handling and the model benchmark are in `docs/aws.md`.

@@ -938,6 +938,27 @@ function packetTable(packet) {
   return `<div class="scroll-x"><table><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
+/* How a Ring event reaches ingestion. Shown because it is part of the live event path, not
+   invisible plumbing: in sqs mode the queue depth is the thing to watch during a demo. */
+function deliveryLine(status) {
+  const p = (status && status.pipeline) || {};
+  if (p.mode !== "sqs") {
+    return `<p class="note">Event delivery: <strong>direct</strong> — the poller ingests each event itself.
+      Amazon SQS is available but switched off (<code>EVENT_PIPELINE=local</code>).</p>`;
+  }
+  const counts = [
+    p.queued === null || p.queued === undefined ? null : `${p.queued} queued`,
+    p.in_flight === null || p.in_flight === undefined ? null : `${p.in_flight} in flight`,
+    p.dead_letter === null || p.dead_letter === undefined ? null : `${p.dead_letter} dead-lettered`,
+  ].filter(Boolean).join(" · ");
+  return `<p class="note">Event delivery: ${plate("ai", "Amazon SQS")}
+    ${counts ? `<span>${esc(counts)}</span>` : ""}
+    ${p.error ? `<span>queue unreachable: ${esc(p.error)}</span>` : ""}
+    ${p.worker && p.worker.handled !== undefined ? `<span>· worker handled ${p.worker.handled}, failed ${p.worker.failed}</span>` : ""}
+    <br>Each event is deleted from the queue only after its database transaction commits, so a failure is
+    redelivered rather than lost.</p>`;
+}
+
 /* ---------- Ring events ---------- */
 
 async function ringSection(status) {
@@ -958,6 +979,7 @@ async function ringSection(status) {
   return `
   <p class="intro">Everything Ring has sent and what DealerSight did with it. <b>Counted</b> events become funnel
     figures; the rest keep their row with the reason they did not. The camera controls for the demo live here.</p>
+  ${deliveryLine(status)}
 
   ${fold("operator", "Camera and session controls",
     armed ? `Armed: <strong>${esc(armed.name)}</strong> until ${time(armed.until)}.`
